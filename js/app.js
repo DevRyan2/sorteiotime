@@ -494,8 +494,9 @@ const UI = (() => {
 
   // Membro confirma presença pela primeira vez
   const confirmPresence = (sessionId) => {
-    // store-level nick, if present we auto‑prompt
-    const stored = Storage.getMyNick();
+    const myConf = Storage.getMyConfirmation(sessionId);
+    if (myConf) { toast('⚠️ Você já confirmou como ' + myConf.nick, 'warn'); return; }
+
     const session = DB.getSession(sessionId);
     const fmt = FORMATS[session?.format] || null;
     const needed = fmt ? fmt.players : 2;
@@ -504,19 +505,6 @@ const UI = (() => {
       return;
     }
 
-    if (stored) {
-      // quick confirm dialog
-      if (!confirm(`Confirmar presença como ${stored}?`)) return;
-      // go ahead and addConfirmed
-      DB.addConfirmed(sessionId, stored).then(() => {
-        Storage.setMyConfirmation(sessionId, { nick: stored, edited: false });
-        toast(`✅ ${stored} confirmado!`);
-        if (DB.isUsingFallback()) renderSessions();
-      }).catch(e => toast('❌ Erro: ' + e.message, 'err'));
-      return;
-    }
-
-    // no stored nick, ask via modal (legacy behaviour)
     const modal = $('modal-confirm');
     if (!modal) return;
     modal.dataset.sessionId = sessionId;
@@ -576,10 +564,6 @@ const UI = (() => {
         }
         await DB.addConfirmed(sessionId, nick);
         Storage.setMyConfirmation(sessionId, { nick, edited: false });
-        // persist nick for future visits
-        if (!Storage.getMyNick()) {
-          Storage.setMyNick(nick);
-        }
         toast(`✅ ${nick} confirmado!`);
       } else {
         const oldNick = modal.dataset.oldNick;
@@ -788,21 +772,6 @@ const UI = (() => {
     const adminActions = Storage.isAdmin() ? `
       <button class="btn btn-ghost btn-sm" onclick="UI.openRegisterModal()">+ Cadastrar</button>` : '';
 
-    // show current user's stored nick with edit option
-    let myNickHtml = '';
-    const myNick = Storage.getMyNick();
-    if (myNick) {
-      const edits = Storage.getNickEdits();
-      myNickHtml = `<div style="margin-bottom:12px">
-          <strong>Seu nick:</strong> ${myNick}
-          ${edits < 2 ? `<button class="btn btn-ghost btn-sm" style="margin-left:8px" onclick="UI.promptEditNick()">Editar (${2-edits} restantes)</button>` : ''}
-        </div>`;
-    } else {
-      myNickHtml = `<div style="margin-bottom:12px">
-          <button class="btn btn-ghost btn-sm" onclick="UI.promptEditNick()">Definir meu nick</button>
-        </div>`;
-    }
-
     wrap.innerHTML = `
       <div class="card">
         <div class="card-head">
@@ -812,7 +781,6 @@ const UI = (() => {
             <button class="btn btn-ghost btn-sm" onclick="UI.openInviteModal()">🔗 Gerar convite</button>
           </div>
         </div>
-        ${myNickHtml}
         ${list.length === 0
           ? `<p style="color:var(--muted);font-size:13px;padding:12px 0">Nenhum jogador cadastrado. Clique em "+ Cadastrar" ou gere um link de convite.</p>`
           : `<div class="players-table">

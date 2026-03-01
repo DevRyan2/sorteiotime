@@ -66,8 +66,7 @@ const Sorteio = (() => {
   // ── Formatação de mensagem WhatsApp ───────────────────────────────────────
   const buildMessage = (eventName) => {
     const date   = new Date().toLocaleDateString('pt-BR');
-    // emojis temáticos para representar slots/teams
-    const badges = ['🔫','🎯','💥','⚔️','🎮','🔥','🛡️','👑'];
+    const badges = ['🟢','🔵','🟣','🟡','🔴','🟤','⚪','🟠'];
     let msg = '';
     if (eventName) msg += `🏆 *${eventName}*\n`;
     msg += `🔫 *SORTEIO DE TIMES — ${date}*\n${'━'.repeat(26)}\n\n`;
