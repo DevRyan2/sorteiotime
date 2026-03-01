@@ -255,6 +255,17 @@ input.invite-link-out { background:rgba(0,0,0,0.5);border:1px solid rgba(37,211,
 .pick-btn:hover { background:rgba(37,211,102,0.3); }
 .champion-banner { background:linear-gradient(135deg,rgba(37,211,102,0.15),rgba(110,255,160,0.08));border:1px solid rgba(37,211,102,0.35);border-radius:16px;padding:20px;text-align:center;font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--accent);margin-top:16px; }
 
+/* ── Confirmação de sessão ──────────────────────────────────────────────── */
+.conf-status { padding:10px 14px;border-radius:12px;font-size:13px;font-weight:500;margin:10px 0;display:flex;align-items:center;flex-wrap:wrap;gap:6px; }
+.conf-ok      { background:rgba(37,211,102,0.1);border:1px solid rgba(37,211,102,0.25);color:var(--accent); }
+.conf-pending { background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.25);color:#fbbf24; }
+
+.session-confirmed-list { display:flex;flex-direction:column;gap:4px;margin-top:10px; }
+.conf-row { display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:rgba(0,0,0,0.25);border:1px solid var(--border2);border-radius:10px; }
+.conf-nick { font-size:13px;font-weight:600;color:var(--text); }
+.conf-kick { background:rgba(255,77,109,0.1);border:1px solid rgba(255,77,109,0.25);color:var(--red);border-radius:6px;cursor:pointer;font-size:11px;font-weight:700;padding:3px 9px;transition:all 0.2s; }
+.conf-kick:hover { background:rgba(255,77,109,0.25); }
+
 /* ── Animações ──────────────────────────────────────────────────────────── */
 .hidden { display:none !important; }
 .panel { animation:fade-up 0.5s cubic-bezier(.16,1,.3,1) both; }
