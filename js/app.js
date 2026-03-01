@@ -58,8 +58,8 @@ const UI = (() => {
   };
 
   const renderAdminBtn = () => {
-    const btn = $('admin-btn');
-    const scoringBtn = $('btn-scoring-config');
+    const btn       = $('admin-btn');
+    const scoringBtn= $('btn-scoring-config');
     if (!btn) return;
     btn.textContent = Storage.isAdmin() ? '🔑 Admin ON' : '🔒 Admin';
     btn.classList.toggle('admin-active', Storage.isAdmin());
@@ -400,7 +400,7 @@ const UI = (() => {
   };
 
   // ── Sortear times a partir dos confirmados ────────────────────────────────
-  const drawFromSession = (sessionId) => {
+  const drawFromSession = async (sessionId) => {
     if (!Storage.isAdmin()) return;
     const session = DB.getSession(sessionId);
     if (!session) return;
@@ -490,13 +490,16 @@ const UI = (() => {
     if (previewEl) previewEl.textContent = msg;
 
     modal.classList.remove('hidden');
+
+    // Salvar times na sessão para o botão Finalizar
+    try { await DB.updateSession(sessionId, { teams }); } catch(e) {}
+    if (DB.isUsingFallback()) renderSessions();
   };
 
   // Membro confirma presença pela primeira vez
   const confirmPresence = (sessionId) => {
-    const myConf = Storage.getMyConfirmation(sessionId);
-    if (myConf) { toast('⚠️ Você já confirmou como ' + myConf.nick, 'warn'); return; }
-
+    // store-level nick, if present we auto‑prompt
+    const stored = Storage.getMyNick();
     const session = DB.getSession(sessionId);
     const fmt = FORMATS[session?.format] || null;
     const needed = fmt ? fmt.players : 2;
@@ -505,6 +508,19 @@ const UI = (() => {
       return;
     }
 
+    if (stored) {
+      // quick confirm dialog
+      if (!confirm(`Confirmar presença como ${stored}?`)) return;
+      // go ahead and addConfirmed
+      DB.addConfirmed(sessionId, stored).then(() => {
+        Storage.setMyConfirmation(sessionId, { nick: stored, edited: false });
+        toast(`✅ ${stored} confirmado!`);
+        if (DB.isUsingFallback()) renderSessions();
+      }).catch(e => toast('❌ Erro: ' + e.message, 'err'));
+      return;
+    }
+
+    // no stored nick, ask via modal (legacy behaviour)
     const modal = $('modal-confirm');
     if (!modal) return;
     modal.dataset.sessionId = sessionId;
@@ -564,6 +580,10 @@ const UI = (() => {
         }
         await DB.addConfirmed(sessionId, nick);
         Storage.setMyConfirmation(sessionId, { nick, edited: false });
+        // persist nick for future visits
+        if (!Storage.getMyNick()) {
+          Storage.setMyNick(nick);
+        }
         toast(`✅ ${nick} confirmado!`);
       } else {
         const oldNick = modal.dataset.oldNick;
@@ -647,94 +667,6 @@ const UI = (() => {
     window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
   };
 
-  // ── Finalizar partida / Registrar resultado ────────────────────────────
-  const openFinishMatchModal = (sessionId) => {
-    if (!Storage.isAdmin()) { toast('⚠️ Apenas admin pode finalizar partidas', 'warn'); return; }
-    const session = DB.getSession(sessionId);
-    if (!session || !session.teams || session.teams.length === 0) {
-      toast('⚠️ Não há times sorteados nesta sessão', 'warn');
-      return;
-    }
-
-    const modal = $('modal-finish-match');
-    const winnerSel = $('finish-winner-select');
-    const mvpSel = $('finish-mvp-select');
-    
-    if (!modal || !winnerSel || !mvpSel) return;
-
-    // Preencher select de times vencedores
-    winnerSel.innerHTML = `<option value="">— Selecionar —</option>` +
-      session.teams.map((_, i) => `<option value="${i}">Time ${i + 1}</option>`).join('');
-
-    // Preencher select de MVPs (todos os jogadores)
-    const allPlayers = session.teams.flat();
-    mvpSel.innerHTML = `<option value="">— Sem MVP —</option>` +
-      allPlayers.map(p => `<option value="${p}">${p}</option>`).join('');
-
-    // Guardar sessionId para uso no submit
-    modal.dataset.sessionId = sessionId;
-    modal.classList.remove('hidden');
-  };
-
-  const confirmFinishMatch = async () => {
-    if (!Storage.isAdmin()) return;
-    const modal = $('modal-finish-match');
-    const sessionId = parseInt(modal.dataset.sessionId);
-    const winnerIdx = parseInt($('finish-winner-select').value);
-    const mvpNick = $('finish-mvp-select').value || null;
-
-    if (isNaN(winnerIdx)) { toast('⚠️ Escolha o time vencedor', 'warn'); return; }
-
-    const session = DB.getSession(sessionId);
-    if (!session || !session.teams) return;
-
-    const btn = $('btn-confirm-finish');
-    if (btn) { btn.disabled = true; btn.textContent = '⏳ Salvando...'; }
-
-    try {
-      // Registrar partida
-      const matchData = {
-        eventName: session.eventName || '',
-        teams: session.teams.map(t => [...t]),
-        winner: winnerIdx,
-        mvp: mvpNick,
-        date: Date.now(),
-      };
-      const match = Storage.addMatch(matchData);
-
-      // Atualizar stats dos jogadores
-      const cfg = Storage.getScoringConfig();
-      session.teams.forEach((team, ti) => {
-        team.forEach(nick => {
-          const p = Storage.getPlayer(nick);
-          if (p) {
-            p.stats = p.stats || {};
-            p.stats.totalMatches = (p.stats.totalMatches || 0) + 1;
-            if (ti === winnerIdx) {
-              p.stats.wins = (p.stats.wins || 0) + 1;
-              Storage.addPoints(nick, cfg.pointsPerWin);
-            } else {
-              p.stats.losses = (p.stats.losses || 0) + 1;
-            }
-            if (nick === mvpNick) {
-              p.stats.mvps = (p.stats.mvps || 0) + 1;
-              Storage.addPoints(nick, cfg.pointsPerMvp);
-            }
-            Storage.upsertPlayer(nick, p);
-          }
-        });
-      });
-
-      toast('✅ Resultado salvo! Estatísticas atualizadas.');
-      modal.classList.add('hidden');
-      if (DB.isUsingFallback()) renderSessions();
-    } catch(e) {
-      toast('❌ Erro ao salvar: ' + e.message, 'err');
-    } finally {
-      if (btn) { btn.disabled = false; btn.textContent = '✅ Salvar resultado'; }
-    }
-  };
-
   const deleteSession = async (id) => {
     if (!window.confirm('Deletar sessão?')) return;
     try {
@@ -751,6 +683,121 @@ const UI = (() => {
     Storage.deleteMatch(id);
     renderMatchHistory();
     toast('🗑 Partida removida');
+  };
+
+  // ══════════════════════════════════════════════════════════════════════════
+  //  TAB: PERFIL
+  // ══════════════════════════════════════════════════════════════════════════
+  const renderPerfilTab = () => {
+    const wrap = $('perfil-content');
+    if (!wrap) return;
+    const myNick = Storage.getMyNick();
+    if (!myNick) {
+      wrap.innerHTML = `<div class="card"><p style="color:var(--muted);font-size:13px;padding:12px 0">Defina seu nick na aba <b>Jogadores</b> para ver seu perfil aqui.</p></div>`;
+      return;
+    }
+    const html = Players.renderProfile(myNick);
+    if (!html) {
+      wrap.innerHTML = `<div class="card"><p style="color:var(--muted);font-size:13px;padding:12px 0">Nick "<b>${myNick}</b>" não está cadastrado ainda. Peça ao admin para te cadastrar.</p></div>`;
+      return;
+    }
+    wrap.innerHTML = `<div class="card profile-card">${html}</div>`;
+  };
+
+  // ══════════════════════════════════════════════════════════════════════════
+  //  MODAL: Finalizar Partida
+  // ══════════════════════════════════════════════════════════════════════════
+  const openFinishMatchModal = (sessionId) => {
+    if (!Storage.isAdmin()) return;
+    const session = DB.getSession(sessionId);
+    if (!session) return;
+    const teams = session.teams || [];
+    if (teams.length === 0) { toast('⚠️ Sortear os times primeiro', 'warn'); return; }
+
+    const modal     = $('modal-finish-match');
+    const winnerSel = $('finish-winner-sel');
+    const mvpSel    = $('finish-mvp-sel');
+    if (!modal || !winnerSel || !mvpSel) return;
+
+    winnerSel.innerHTML = teams.map((_, i) => `<option value="${i}">Time ${i + 1}</option>`).join('');
+    const all = teams.flat();
+    mvpSel.innerHTML = `<option value="">— Sem MVP —</option>` +
+      all.map(p => `<option value="${p}">${p}</option>`).join('');
+
+    modal.dataset.sessionId = sessionId;
+    modal.classList.remove('hidden');
+  };
+
+  const confirmFinishMatch = async () => {
+    const modal     = $('modal-finish-match');
+    const sessionId = parseInt(modal.dataset.sessionId);
+    const session   = DB.getSession(sessionId);
+    if (!session || !session.teams) { modal.classList.add('hidden'); return; }
+
+    const winnerIdx = parseInt($('finish-winner-sel')?.value ?? '0');
+    const mvpNick   = $('finish-mvp-sel')?.value || null;
+    const cfg       = Storage.getScoringConfig();
+    const now       = Date.now();
+
+    Storage.addMatch({
+      eventName: session.eventName || 'Partida',
+      teams:     session.teams.map(t => [...t]),
+      winner:    winnerIdx, mvp: mvpNick || null, date: now, sessionId,
+    });
+
+    session.teams.forEach((team, ti) => {
+      const won = ti === winnerIdx;
+      team.forEach(nick => {
+        if (Storage.getPlayer(nick)) {
+          Players.recordMatch(nick, { won, mvp: nick === mvpNick, matchDate: now });
+          if (won)             Storage.addPoints(nick, cfg.pointsPerWin || 10);
+          if (nick === mvpNick) Storage.addPoints(nick, cfg.pointsPerMvp || 15);
+        }
+      });
+    });
+
+    modal.classList.add('hidden');
+    toast('✅ Partida finalizada e resultado salvo!');
+    renderPartidasTab();
+  };
+
+  // ══════════════════════════════════════════════════════════════════════════
+  //  MODAL: Configurar Pontuação (admin)
+  // ══════════════════════════════════════════════════════════════════════════
+  const openScoringConfigModal = () => {
+    const modal = $('modal-scoring-config');
+    if (!modal) return;
+    const cfg = Storage.getScoringConfig();
+
+    const winEl = $('scoring-points-win');
+    const mvpEl = $('scoring-points-mvp');
+    if (winEl) winEl.value = cfg.pointsPerWin;
+    if (mvpEl) mvpEl.value = cfg.pointsPerMvp;
+
+    const container = $('scoring-ranks-container');
+    if (container) {
+      container.innerHTML = cfg.ranks.map((rank, i) => `
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px">
+          <input type="text"   class="field-sm" style="flex:2" value="${rank.name}"      id="scoring-rank-name-${i}" placeholder="Rank">
+          <input type="number" class="field-sm" style="flex:1" value="${rank.minPoints}" id="scoring-rank-min-${i}"  placeholder="Min pts" ${i===0?'disabled':''}>
+        </div>`).join('');
+    }
+    modal.classList.remove('hidden');
+  };
+
+  const closeScoringConfigModal = () => $('modal-scoring-config')?.classList.add('hidden');
+
+  const saveScoringConfig = () => {
+    const cfg = Storage.getScoringConfig();
+    const win = parseInt($('scoring-points-win')?.value) || 10;
+    const mvp = parseInt($('scoring-points-mvp')?.value) || 15;
+    const ranks = cfg.ranks.map((r, i) => ({
+      name:      $(`scoring-rank-name-${i}`)?.value.trim() || r.name,
+      minPoints: i === 0 ? 0 : parseInt($(`scoring-rank-min-${i}`)?.value) || r.minPoints,
+    }));
+    Storage.setScoringConfig({ pointsPerWin: win, pointsPerMvp: mvp, ranks });
+    closeScoringConfigModal();
+    toast('✅ Configuração salva!');
   };
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -772,6 +819,21 @@ const UI = (() => {
     const adminActions = Storage.isAdmin() ? `
       <button class="btn btn-ghost btn-sm" onclick="UI.openRegisterModal()">+ Cadastrar</button>` : '';
 
+    // show current user's stored nick with edit option
+    let myNickHtml = '';
+    const myNick = Storage.getMyNick();
+    if (myNick) {
+      const edits = Storage.getNickEdits();
+      myNickHtml = `<div style="margin-bottom:12px">
+          <strong>Seu nick:</strong> ${myNick}
+          ${edits < 2 ? `<button class="btn btn-ghost btn-sm" style="margin-left:8px" onclick="UI.promptEditNick()">Editar (${2-edits} restantes)</button>` : ''}
+        </div>`;
+    } else {
+      myNickHtml = `<div style="margin-bottom:12px">
+          <button class="btn btn-ghost btn-sm" onclick="UI.promptEditNick()">Definir meu nick</button>
+        </div>`;
+    }
+
     wrap.innerHTML = `
       <div class="card">
         <div class="card-head">
@@ -781,6 +843,7 @@ const UI = (() => {
             <button class="btn btn-ghost btn-sm" onclick="UI.openInviteModal()">🔗 Gerar convite</button>
           </div>
         </div>
+        ${myNickHtml}
         ${list.length === 0
           ? `<p style="color:var(--muted);font-size:13px;padding:12px 0">Nenhum jogador cadastrado. Clique em "+ Cadastrar" ou gere um link de convite.</p>`
           : `<div class="players-table">
@@ -807,8 +870,7 @@ const UI = (() => {
 
   const openProfile = (nick) => {
     profileNick = nick;
-    renderPerfilTab();
-    showTab('perfil');
+    renderJogadoresTab();
   };
 
   const deletePlayer = (nick) => {
@@ -858,50 +920,6 @@ const UI = (() => {
     if (out) { out.value = url; out.classList.remove('hidden'); }
     navigator.clipboard.writeText(url).then(() => toast('🔗 Link copiado!')).catch(() => {});
   };
-
-  // ── Admin Scoring Config Modal ─────────────────────────────────────────────
-  const openScoringConfigModal = () => {
-    if (!Storage.isAdmin()) { toast('⚠️ Apenas admin', 'warn'); return; }
-    const cfg = Storage.getScoringConfig();
-    $('scoring-points-win')?.setAttribute('value', cfg.pointsPerWin);
-    $('scoring-points-mvp')?.setAttribute('value', cfg.pointsPerMvp);
-    
-    const rankContainer = $('scoring-ranks-container');
-    if (rankContainer) {
-      rankContainer.innerHTML = cfg.ranks.map((r, i) => `
-        <div style="display:flex;gap:8px;align-items:center">
-          <input type="text" class="field-sm" value="${r.name}" readonly style="flex:1;background:rgba(255,255,255,0.03);cursor:not-allowed">
-          <input type="number" class="field-sm" id="rank-min-${i}" value="${r.minPoints}" placeholder="Min pontos" data-rank-idx="${i}">
-        </div>
-      `).join('');
-    }
-    
-    $('modal-scoring-config')?.classList.remove('hidden');
-  };
-
-  const saveScoringConfig = () => {
-    if (!Storage.isAdmin()) return;
-    const pointsWin = parseInt($('scoring-points-win')?.value || 10);
-    const pointsMvp = parseInt($('scoring-points-mvp')?.value || 15);
-    if (pointsWin < 1 || pointsMvp < 1) { toast('⚠️ Pontos devem ser > 0', 'warn'); return; }
-    
-    const cfg = Storage.getScoringConfig();
-    cfg.pointsPerWin = pointsWin;
-    cfg.pointsPerMvp = pointsMvp;
-    
-    // Update rank min points
-    cfg.ranks.forEach((r, i) => {
-      const rankId = 'rank-min-' + i;
-      const minInput = $(rankId);
-      if (minInput) r.minPoints = parseInt(minInput.value) || 0;
-    });
-    
-    Storage.setScoringConfig(cfg);
-    $('modal-scoring-config')?.classList.add('hidden');
-    toast('✅ Configuração salva');
-  };
-
-  const closeScoringConfigModal = () => $('modal-scoring-config')?.classList.add('hidden');
 
   // ══════════════════════════════════════════════════════════════════════════
   //  TAB: TORNEIO
@@ -984,20 +1002,6 @@ const UI = (() => {
     Tournament.reset();
     renderTorneioTab();
     toast('🗑 Torneio zerado');
-  };
-
-  // ── Tab: Perfil ────────────────────────────────────────────────────────────
-  const renderPerfilTab = () => {
-    const wrap = $('perfil-content');
-    if (!wrap) return;
-
-    if (!profileNick) {
-      wrap.innerHTML = `<p style="color:var(--muted);font-size:13px;padding:20px 0;text-align:center">👤 Clique em um jogador na aba Jogadores para ver o perfil</p>`;
-      return;
-    }
-
-    const profileHtml = Players.renderProfile(profileNick);
-    wrap.innerHTML = profileHtml || '';
   };
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -1172,6 +1176,18 @@ const UI = (() => {
     $('modal-invite-close')?.addEventListener('click', closeInviteModal);
     $('btn-gen-invite')?.addEventListener('click', generateInviteLink);
 
+    // ── Modal: Finalizar partida ───────────────────────────────────────────
+    $('modal-finish-close')?.addEventListener('click',  () => $('modal-finish-match')?.classList.add('hidden'));
+    $('btn-cancel-finish')?.addEventListener('click',   () => $('modal-finish-match')?.classList.add('hidden'));
+    $('btn-confirm-finish')?.addEventListener('click',  confirmFinishMatch);
+    $('modal-finish-match')?.addEventListener('click', e => { if (e.target === $('modal-finish-match')) $('modal-finish-match').classList.add('hidden'); });
+
+    // ── Modal: Configurar pontuação ────────────────────────────────────────
+    $('modal-scoring-close')?.addEventListener('click',  closeScoringConfigModal);
+    $('btn-cancel-scoring')?.addEventListener('click',   closeScoringConfigModal);
+    $('btn-save-scoring')?.addEventListener('click',     saveScoringConfig);
+    $('modal-scoring-config')?.addEventListener('click', e => { if (e.target === $('modal-scoring-config')) closeScoringConfigModal(); });
+
     // Função auxiliar para definir/editar nick global do dispositivo
     UI.promptEditNick = () => {
       const current = Storage.getMyNick();
@@ -1192,18 +1208,6 @@ const UI = (() => {
       renderJogadoresTab();
     };
 
-    // Event listeners: Finish Match modal
-    $('modal-finish-close')?.addEventListener('click', () => $('modal-finish-match')?.classList.add('hidden'));
-    $('btn-cancel-finish')?.addEventListener('click', () => $('modal-finish-match')?.classList.add('hidden'));
-    $('btn-confirm-finish')?.addEventListener('click', confirmFinishMatch);
-    $('modal-finish-match')?.addEventListener('click', e => { if (e.target === $('modal-finish-match')) $('modal-finish-match').classList.add('hidden'); });
-
-    // Event listeners: Scoring Config modal
-    $('modal-scoring-close')?.addEventListener('click', closeScoringConfigModal);
-    $('btn-cancel-scoring')?.addEventListener('click', closeScoringConfigModal);
-    $('btn-save-scoring')?.addEventListener('click', saveScoringConfig);
-    $('modal-scoring-config')?.addEventListener('click', e => { if (e.target === $('modal-scoring-config')) closeScoringConfigModal(); });
-
     // Fechar modal ao clicar fora
     document.querySelectorAll('.modal-backdrop').forEach(m => {
       m.addEventListener('click', e => { if (e.target === m) { closeRegisterModal(); closeInviteModal(); } });
@@ -1218,13 +1222,13 @@ const UI = (() => {
     startTournamentManual, startTournamentFromSorteio, pickWinner, resetTournament,
     // jogadores
     openProfile, deletePlayer, openRegisterModal, openInviteModal,
-    closeRegisterModal, closeInviteModal, doRegister, generateInviteLink, promptEditNick,
+    closeRegisterModal, closeInviteModal, doRegister, generateInviteLink,
     // partidas
     confirmPresence, editMyPresence, submitConfirmModal, closeConfirmModal,
     kickFromSession, adminAddToSession, copySessionLink, deleteSession, deleteMatch, drawFromSession,
     shareSession, openFinishMatchModal, confirmFinishMatch,
-    // admin
-    openScoringConfigModal,
+    // admin / scoring
+    openScoringConfigModal, renderPerfilTab,
     toast,
   };
 })();

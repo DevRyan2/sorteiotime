@@ -6,7 +6,6 @@
 <title>FF Squad Manager</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
-<link rel="icon" type="image/png" sizes="32x32" href="logo/ffsm_logo.png">
 </head>
 <body>
 
@@ -18,7 +17,7 @@
 </div>
 
 <!-- Overlay de sorteio -->
-<div class="draw-overlay" id="drawOverlay" style="z-index: -1 !important; pointer-events: none !important;">
+<div class="draw-overlay" id="drawOverlay">
   <div class="draw-spinner"></div>
   <div class="draw-text">Sorteando times...</div>
 </div>
@@ -26,10 +25,7 @@
 <!-- Toast -->
 <div class="toast" id="toast"></div>
 
-<!-- MODAIS DISABLED FOR TESTING -->
-<style>
-  .modal-backdrop { display: none !important; pointer-events: none !important; }
-</style>
+<!-- Modal: Resultado do sorteio de sessão -->
 <div class="modal-backdrop hidden" id="modal-draw-result">
   <div class="modal-box" style="max-width:480px">
     <div class="modal-head">
@@ -117,68 +113,6 @@
       <button class="btn btn-primary btn-full" id="btn-gen-invite">🔗 Gerar e copiar link</button>
     </div>
     <input type="text" class="invite-link-out hidden" id="invite-link-out" readonly onclick="this.select()">
-  </div>
-</div>
-
-<!-- Modal: Finalizar partida (registrar resultado) -->
-<div class="modal-backdrop hidden" id="modal-finish-match">
-  <div class="modal-box" style="max-width:500px">
-    <div class="modal-head">
-      <div class="modal-title">🏁 Finalizar partida</div>
-      <button class="modal-close" id="modal-finish-close">✕</button>
-    </div>
-    <div style="margin-bottom:16px">
-      <label class="field-label">Vencedor</label>
-      <select class="field-full" id="finish-winner-select">
-        <option value="">— Selecionar —</option>
-      </select>
-    </div>
-    <div style="margin-bottom:16px">
-      <label class="field-label">MVP da partida</label>
-      <select class="field-full" id="finish-mvp-select">
-        <option value="">— Sem MVP —</option>
-      </select>
-    </div>
-    <div class="btn-bar" style="margin-top:4px">
-      <button class="btn btn-secondary" id="btn-cancel-finish">Cancelar</button>
-      <button class="btn btn-primary" id="btn-confirm-finish">✅ Salvar resultado</button>
-    </div>
-  </div>
-</div>
-
-<!-- Modal: Admin Scoring Config -->
-<div class="modal-backdrop hidden" id="modal-scoring-config">
-  <div class="modal-box" style="max-width:520px">
-    <div class="modal-head">
-      <div class="modal-title">⚙️ Configurar Sistema de Pontuação</div>
-      <button class="modal-close" id="modal-scoring-close">✕</button>
-    </div>
-    <div style="color:var(--muted);font-size:13px;margin-bottom:20px;line-height:1.6">
-      Configure os pontos distribuídos por vitória e MVP, e os limites de pontos para cada rank.
-    </div>
-    
-    <div style="background:rgba(37,211,102,0.08);border:1px solid rgba(37,211,102,0.2);border-radius:12px;padding:16px;margin-bottom:20px">
-      <div style="margin-bottom:14px">
-        <label class="field-label">Pontos por vitória</label>
-        <input type="number" class="field-full" id="scoring-points-win" placeholder="Ex: 10" style="margin-top:4px">
-      </div>
-      <div>
-        <label class="field-label">Pontos por MVP</label>
-        <input type="number" class="field-full" id="scoring-points-mvp" placeholder="Ex: 15" style="margin-top:4px">
-      </div>
-    </div>
-
-    <div style="margin-bottom:16px">
-      <label class="field-label" style="margin-bottom:10px;display:block">Limites de pontos por rank</label>
-      <div id="scoring-ranks-container" style="display:flex;flex-direction:column;gap:8px">
-        <!-- Ranks inserted by JS -->
-      </div>
-    </div>
-
-    <div class="btn-bar">
-      <button class="btn btn-secondary" id="btn-cancel-scoring">Cancelar</button>
-      <button class="btn btn-primary" id="btn-save-scoring">💾 Salvar configuração</button>
-    </div>
   </div>
 </div>
 
@@ -443,15 +377,74 @@
     </div>
   </div>
 
+  <!-- ═══════════════════════════════════════════════════════════ -->
   <!-- TAB: PERFIL                                                 -->
   <!-- ═══════════════════════════════════════════════════════════ -->
   <div id="tab-perfil" class="hidden">
     <div id="perfil-content">
-      <p style="color:var(--muted);font-size:13px;padding:20px 0;text-align:center">👤 Clique em um jogador na aba Jogadores para ver o perfil</p>
+      <p style="color:var(--muted);font-size:13px;padding:20px 0">Carregando...</p>
     </div>
   </div>
 
 </div><!-- /wrap -->
+
+<!-- Modal: Finalizar partida -->
+<div class="modal-backdrop hidden" id="modal-finish-match">
+  <div class="modal-box" style="max-width:500px">
+    <div class="modal-head">
+      <div class="modal-title">🏁 Finalizar partida</div>
+      <button class="modal-close" id="modal-finish-close">✕</button>
+    </div>
+    <p style="color:var(--muted);font-size:13px;margin-bottom:16px;line-height:1.6">
+      Registre o resultado para atualizar os perfis e rankings dos jogadores cadastrados.
+    </p>
+    <div class="modal-field-group">
+      <label class="field-label">Time vencedor</label>
+      <select class="field-full" id="finish-winner-sel" style="margin-top:4px"></select>
+    </div>
+    <div class="modal-field-group">
+      <label class="field-label">MVP da partida</label>
+      <select class="field-full" id="finish-mvp-sel" style="margin-top:4px"></select>
+    </div>
+    <div class="btn-bar">
+      <button class="btn btn-secondary" id="btn-cancel-finish">Cancelar</button>
+      <button class="btn btn-primary"   id="btn-confirm-finish">🏁 Finalizar e salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Configurar pontuação -->
+<div class="modal-backdrop hidden" id="modal-scoring-config">
+  <div class="modal-box" style="max-width:520px">
+    <div class="modal-head">
+      <div class="modal-title">⚙️ Configurar Pontuação</div>
+      <button class="modal-close" id="modal-scoring-close">✕</button>
+    </div>
+    <div style="color:var(--muted);font-size:13px;margin-bottom:20px;line-height:1.6">
+      Configure os pontos distribuídos por vitória e MVP, e os limites de pontos para cada rank.
+    </div>
+    <div style="background:rgba(37,211,102,0.08);border:1px solid rgba(37,211,102,0.2);border-radius:12px;padding:16px;margin-bottom:20px">
+      <div style="margin-bottom:14px">
+        <label class="field-label">Pontos por vitória</label>
+        <input type="number" class="field-full" id="scoring-points-win" placeholder="Ex: 10" style="margin-top:4px">
+      </div>
+      <div>
+        <label class="field-label">Pontos por MVP</label>
+        <input type="number" class="field-full" id="scoring-points-mvp" placeholder="Ex: 15" style="margin-top:4px">
+      </div>
+    </div>
+    <div style="margin-bottom:16px">
+      <label class="field-label" style="margin-bottom:10px;display:block">Limites de pontos por rank</label>
+      <div id="scoring-ranks-container" style="display:flex;flex-direction:column;gap:8px">
+        <!-- Preenchido pelo JS -->
+      </div>
+    </div>
+    <div class="btn-bar">
+      <button class="btn btn-secondary" id="btn-cancel-scoring">Cancelar</button>
+      <button class="btn btn-primary"   id="btn-save-scoring">💾 Salvar configuração</button>
+    </div>
+  </div>
+</div>
 
 <!-- Radio buttons de formato -->
 <script>

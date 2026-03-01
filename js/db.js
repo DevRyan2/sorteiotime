@@ -110,6 +110,19 @@ const DB = (() => {
     await _db.ref(`sessions/${id}`).remove();
   };
 
+  const updateSession = async (id, updates) => {
+    const s = _cache[id];
+    if (!s) return null;
+    _cache[id] = { ...s, ...updates };
+    if (_usingFallback) { _saveFallback(); if (_onChange) _onChange(); return _cache[id]; }
+    // no confirmed changes here — just metadata/teams
+    const { confirmed, ...rest } = updates;
+    if (Object.keys(rest).length > 0) {
+      await _db.ref(`sessions/${id}`).update(rest);
+    }
+    return _cache[id];
+  };
+
   // Adiciona nick confirmado — usa nick como parte da chave pra evitar duplicatas
   const addConfirmed = async (sessionId, nick) => {
     const s = _cache[sessionId];
@@ -189,7 +202,7 @@ const DB = (() => {
     init,
     isReady, isUsingFallback, onReady, setOnChange,
     getSessions, getSession,
-    addSession, deleteSession,
+    addSession, deleteSession, updateSession,
     addConfirmed, replaceConfirmed, removeConfirmed,
   };
 })();

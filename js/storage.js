@@ -15,11 +15,12 @@ const Storage = (() => {
     pointsPerWin: 10,
     pointsPerMvp: 15,
     ranks: [
-      { name: 'Bronze', minPoints: 0 },
-      { name: 'Silver', minPoints: 50 },
-      { name: 'Gold', minPoints: 100 },
-      { name: 'Platinum', minPoints: 200 },
-      { name: 'Diamond', minPoints: 300 },
+      { name: 'Bronze',   minPoints: 0   },
+      { name: 'Prata',    minPoints: 50  },
+      { name: 'Ouro',     minPoints: 100 },
+      { name: 'Platina',  minPoints: 200 },
+      { name: 'Diamante', minPoints: 350 },
+      { name: 'Mestre',   minPoints: 500 },
     ],
   };
 
@@ -37,13 +38,9 @@ const Storage = (() => {
 
   const upsertPlayer = (nick, data) => {
     const all = getPlayers();
-    const cfg = getScoringConfig();
-    const lowestRank = cfg.ranks[0].name;
     all[nick] = {
       nick,
-      rank: lowestRank,
-      points: 0,
-      stats: { wins: 0, losses: 0, mvps: 0, totalMatches: 0 },
+      rank: 'Bronze',
       matches: [],
       achievements: [],
       joinedAt: Date.now(),
@@ -140,6 +137,14 @@ const Storage = (() => {
   const getAdminKey= ()    => get(K.ADMIN_KEY) || '';
   const setAdminKey= (k)   => set(K.ADMIN_KEY, k);
 
+  // ── Nick persistente do usuário ───────────────────────────────────────
+  // Guardamos o nick que o dispositivo usou para confirmar presença pela
+  // primeira vez; o usuário pode alterá-lo até 2 vezes.
+  const getMyNick        = () => get('ff_my_nick') || '';
+  const setMyNick        = (n) => set('ff_my_nick', n);
+  const getNickEdits     = () => get('ff_my_nick_edits') || 0;
+  const incrementNickEdits = () => set('ff_my_nick_edits', getNickEdits() + 1);
+
   // A senha de administrador é fixa; ver README.md para o valor.
   // Essa rotina verifica se a senha informada bate com a constante e,
   // quando correta, guarda a chave em localStorage para que, em
@@ -147,8 +152,9 @@ const Storage = (() => {
   // necessário, mas mantém o `getAdminKey` com algum uso).
   const checkPassword = (pw) => {
     const ADMIN_PW = 'ADMDAVARZEAKK2';
-    if (pw === ADMIN_PW) {
-      setAdminKey(pw);
+    if (typeof pw !== 'string') return false;
+    if (pw.trim() === ADMIN_PW) {
+      setAdminKey(pw.trim());
       return true;
     }
     return false;
@@ -161,9 +167,9 @@ const Storage = (() => {
     setAdmin(true);
   }
 
-  // ── Scoring Configuration ──────────────────────────────────────────
-  const getScoringConfig = () => get(K.SCORING_CONFIG) || DEFAULT_SCORING;
-  const setScoringConfig = (cfg) => set(K.SCORING_CONFIG, cfg);
+  // ── Scoring Configuration ─────────────────────────────────────────────────
+  const getScoringConfig  = ()    => get(K.SCORING_CONFIG) || DEFAULT_SCORING;
+  const setScoringConfig  = (cfg) => set(K.SCORING_CONFIG, cfg);
 
   const calculateRank = (points) => {
     const cfg = getScoringConfig();
@@ -173,11 +179,11 @@ const Storage = (() => {
     return cfg.ranks[0].name;
   };
 
-  const addPoints = (nick, pointsToAdd) => {
+  const addPoints = (nick, pts) => {
     const p = getPlayer(nick);
     if (!p) return null;
-    p.points = (p.points || 0) + pointsToAdd;
-    p.rank = calculateRank(p.points);
+    p.points = (p.points || 0) + pts;
+    p.rank   = calculateRank(p.points);
     upsertPlayer(nick, p);
     return p;
   };
