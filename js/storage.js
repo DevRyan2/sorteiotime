@@ -8,6 +8,19 @@ const Storage = (() => {
     ADMIN_KEY:'ff_admin_key',
     IS_ADMIN: 'ff_is_admin',
     TOURNAMENT:'ff_tournament',
+    SCORING_CONFIG:'ff_scoring_config',
+  };
+
+  const DEFAULT_SCORING = {
+    pointsPerWin: 10,
+    pointsPerMvp: 15,
+    ranks: [
+      { name: 'Bronze', minPoints: 0 },
+      { name: 'Silver', minPoints: 50 },
+      { name: 'Gold', minPoints: 100 },
+      { name: 'Platinum', minPoints: 200 },
+      { name: 'Diamond', minPoints: 300 },
+    ],
   };
 
   const get = key => {
@@ -24,9 +37,13 @@ const Storage = (() => {
 
   const upsertPlayer = (nick, data) => {
     const all = getPlayers();
+    const cfg = getScoringConfig();
+    const lowestRank = cfg.ranks[0].name;
     all[nick] = {
       nick,
-      rank: 'Bronze',
+      rank: lowestRank,
+      points: 0,
+      stats: { wins: 0, losses: 0, mvps: 0, totalMatches: 0 },
       matches: [],
       achievements: [],
       joinedAt: Date.now(),
@@ -153,6 +170,27 @@ const Storage = (() => {
     setAdmin(true);
   }
 
+  // ── Scoring Configuration ──────────────────────────────────────────
+  const getScoringConfig = () => get(K.SCORING_CONFIG) || DEFAULT_SCORING;
+  const setScoringConfig = (cfg) => set(K.SCORING_CONFIG, cfg);
+
+  const calculateRank = (points) => {
+    const cfg = getScoringConfig();
+    for (let i = cfg.ranks.length - 1; i >= 0; i--) {
+      if (points >= cfg.ranks[i].minPoints) return cfg.ranks[i].name;
+    }
+    return cfg.ranks[0].name;
+  };
+
+  const addPoints = (nick, pointsToAdd) => {
+    const p = getPlayer(nick);
+    if (!p) return null;
+    p.points = (p.points || 0) + pointsToAdd;
+    p.rank = calculateRank(p.points);
+    upsertPlayer(nick, p);
+    return p;
+  };
+
   // ── Tournament ────────────────────────────────────────────────────────────
   const getTournament  = ()  => get(K.TOURNAMENT);
   const setTournament  = (t) => set(K.TOURNAMENT, t);
@@ -167,6 +205,7 @@ const Storage = (() => {
     isAdmin, setAdmin, getAdminKey, setAdminKey,
     checkPassword,
     getMyNick, setMyNick, getNickEdits, incrementNickEdits,
+    getScoringConfig, setScoringConfig, calculateRank, addPoints,
     getTournament, setTournament, clearTournament,
   };
 })();

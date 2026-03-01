@@ -165,11 +165,154 @@ const Players = (() => {
     </svg>`;
   };
 
-  // ── Render: card de perfil completo ──────────────────────────────────────
-  const renderProfile = (nick) => {
+  // ── Profile Card Generation: Canvas-based PNG export ──────────────────────
+  const generateProfileCard = (nick) => {
+    const p = Storage.getPlayer(nick);
+    const stats = getStats(nick);
+    if (!p || !stats) return;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 600;
+    canvas.height = 800;
+    const ctx = canvas.getContext('2d');
+
+    // Background
+    const gradient = ctx.createLinearGradient(0, 0, 0, 800);
+    gradient.addColorStop(0, '#0b1610');
+    gradient.addColorStop(1, '#0f1d14');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 600, 800);
+
+    // Border accent
+    ctx.strokeStyle = '#25D366';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(15, 15, 570, 770);
+
+    // Avatar circle
+    ctx.fillStyle = '#25D366';
+    ctx.beginPath();
+    ctx.arc(300, 120, 60, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#050c08';
+    ctx.font = 'bold 64px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(nick.charAt(0).toUpperCase(), 300, 120);
+
+    // Nick
+    ctx.fillStyle = '#f0faf3';
+    ctx.font = 'bold 36px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText(nick, 300, 210);
+
+    // Rank
+    const calculatedRank = Storage.calculateRank(p.points || 0) || p.rank || 'Bronze';
+    ctx.fillStyle = '#FFC107';
+    ctx.font = 'bold 24px Arial';
+    ctx.fillText(`${calculatedRank}`, 300, 250);
+
+    // Points
+    ctx.fillStyle = '#dff5e8';
+    ctx.font = '16px Arial';
+    ctx.fillText(`${p.points || 0} Pontos`, 300, 280);
+
+    // Stats section
+    const stats_y = 330;
+    const stats_box_height = 90;
+    const stats_spacing = 150;
+
+    const drawStatBox = (x, label, value, color) => {
+      ctx.fillStyle = 'rgba(255,255,255,0.05)';
+      ctx.fillRect(x - 70, stats_y, 140, stats_box_height);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x - 70, stats_y, 140, stats_box_height);
+
+      ctx.fillStyle = color;
+      ctx.font = 'bold 28px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(value, x, stats_y + 45);
+
+      ctx.fillStyle = '#dff5e8';
+      ctx.font = '12px Arial';
+      ctx.fillText(label, x, stats_y + 70);
+    };
+
+    drawStatBox(150, 'Vitórias', stats.wins, '#25D366');
+    drawStatBox(300, 'Derrotas', stats.losses, '#ff4d6d');
+    drawStatBox(450, 'WR', `${stats.winrate}%`, '#6effa0');
+
+    // MVP count
+    const mvp_y = 450;
+    ctx.fillStyle = 'rgba(255,255,255,0.05)';
+    ctx.fillRect(150 - 70, mvp_y, 140, 80);
+    ctx.strokeStyle = '#FFC107';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(150 - 70, mvp_y, 140, 80);
+    ctx.fillStyle = '#FFC107';
+    ctx.font = 'bold 24px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText(stats.mvps, 150, mvp_y + 35);
+    ctx.fillStyle = '#dff5e8';
+    ctx.font = '12px Arial';
+    ctx.fillText('MVPs', 150, mvp_y + 60);
+
+    // Streak
+    ctx.fillStyle = 'rgba(255,255,255,0.05)';
+    ctx.fillRect(300 - 70, mvp_y, 140, 80);
+    const streakColor = stats.streakType === true ? '#25D366' : stats.streakType === false ? '#ff4d6d' : '#4d7a58';
+    ctx.strokeStyle = streakColor;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(300 - 70, mvp_y, 140, 80);
+    ctx.fillStyle = streakColor;
+    ctx.font = 'bold 24px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText(stats.streak, 300, mvp_y + 35);
+    ctx.fillStyle = '#dff5e8';
+    ctx.font = '12px Arial';
+    ctx.fillText(stats.streakType === true ? 'Seq.Vitórias' : stats.streakType === false ? 'Seq.Derrotas' : 'Sequência', 300, mvp_y + 60);
+
+    // Total matches
+    ctx.fillStyle = 'rgba(255,255,255,0.05)';
+    ctx.fillRect(450 - 70, mvp_y, 140, 80);
+    ctx.strokeStyle = '#6effa0';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(450 - 70, mvp_y, 140, 80);
+    ctx.fillStyle = '#6effa0';
+    ctx.font = 'bold 24px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText(stats.total, 450, mvp_y + 35);
+    ctx.fillStyle = '#dff5e8';
+    ctx.font = '12px Arial';
+    ctx.fillText('Partidas', 450, mvp_y + 60);
+
+    // Footer
+    ctx.fillStyle = '#4d7a58';
+    ctx.font = '12px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('🎮 FF Squad Manager', 300, 750);
+
+    // Download
+    canvas.toBlob(blob => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${nick}_profile.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    });
+  };
     const p     = Storage.getPlayer(nick);
     const stats = getStats(nick);
     if (!p || !stats) return '';
+
+    // Get calculated rank from points if available, fallback to static rank
+    const points = p.points || 0;
+    const calculatedRank = Storage.calculateRank(points);
+    const displayRank = calculatedRank || p.rank || 'Bronze';
 
     const achDefs = ACHIEVEMENTS_DEF.filter(a => (p.achievements || []).includes(a.id));
     const achHTML = achDefs.length > 0
@@ -198,14 +341,17 @@ const Players = (() => {
       ? `<button class="btn btn-ghost btn-sm" onclick="UI.deletePlayer('${nick}')">🗑 Deletar</button>`
       : '';
 
+    const downloadCardBtn = `<button class="btn btn-ghost btn-sm" onclick="Players.generateProfileCard('${nick}')">📥 Card</button>`;
+
     return `
       <div class="profile-header">
         <div class="profile-avatar">${nick.charAt(0).toUpperCase()}</div>
         <div class="profile-info">
           <div class="profile-nick">${nick}</div>
-          <div class="profile-rank rank-tag">${p.rank || 'Bronze'}</div>
+          <div class="profile-rank rank-tag">${displayRank}</div>
         </div>
         <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+          ${downloadCardBtn}
           ${adminDeleteBtn}
           <button class="btn btn-ghost btn-sm" onclick="UI.showTab('jogadores')">← Voltar</button>
         </div>
@@ -230,6 +376,11 @@ const Players = (() => {
         </div>
       </div>
 
+      <div class="stat-box" style="grid-column: span 2; background: rgba(255, 193, 7, 0.1); border-color: #FFC107;">
+        <div class="stat-val" style="color: #FFC107;">${points}</div>
+        <div class="stat-lbl">Pontos</div>
+      </div>
+
       <div class="stat-streak" style="color:${streakColor}">${streakLabel}</div>
 
       <div class="section-title">📈 WinRate por mês</div>
@@ -243,5 +394,5 @@ const Players = (() => {
     `;
   };
 
-  return { getAll, getList, register, getStats, recordMatch, checkAchievements, renderProfile, renderWinrateChart };
+  return { getAll, getList, register, getStats, recordMatch, checkAchievements, renderProfile, renderWinrateChart, generateProfileCard };
 })();

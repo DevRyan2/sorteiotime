@@ -58,9 +58,11 @@ const UI = (() => {
 
   const renderAdminBtn = () => {
     const btn = $('admin-btn');
+    const scoringBtn = $('btn-scoring-config');
     if (!btn) return;
     btn.textContent = Storage.isAdmin() ? '🔑 Admin ON' : '🔒 Admin';
     btn.classList.toggle('admin-active', Storage.isAdmin());
+    if (scoringBtn) scoringBtn.style.display = Storage.isAdmin() ? 'inline-block' : 'none';
   };
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -299,6 +301,11 @@ const UI = (() => {
             `${hasEnough ? '' : ` disabled title="Faltam ${needed - confirmed.length} jogadores"`}>${drawLabel}</button>`
         : '';
 
+      // Botão Finalizar (admin, após sorteio)
+      const finishBtn = admin && s.teams && s.teams.length > 0
+        ? `<button class="btn btn-accent btn-sm" onclick="UI.openFinishMatchModal(${s.id})">🏁 Finalizar</button>`
+        : '';
+
       return `<div class="session-card">
         <div class="session-head">
           <div>
@@ -324,6 +331,7 @@ const UI = (() => {
           <button class="btn btn-ghost btn-sm" onclick="UI.copySessionLink(${s.id})">🔗 Copiar link</button>
           <button class="btn btn-ghost btn-sm" onclick="UI.shareSession(${s.id})">📤 WhatsApp</button>
           ${drawBtn}
+          ${finishBtn}
         </div>
       </div>`;
     }).join('');
@@ -654,6 +662,94 @@ const UI = (() => {
     window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
   };
 
+  // ── Finalizar partida / Registrar resultado ────────────────────────────
+  const openFinishMatchModal = (sessionId) => {
+    if (!Storage.isAdmin()) { toast('⚠️ Apenas admin pode finalizar partidas', 'warn'); return; }
+    const session = DB.getSession(sessionId);
+    if (!session || !session.teams || session.teams.length === 0) {
+      toast('⚠️ Não há times sorteados nesta sessão', 'warn');
+      return;
+    }
+
+    const modal = $('modal-finish-match');
+    const winnerSel = $('finish-winner-select');
+    const mvpSel = $('finish-mvp-select');
+    
+    if (!modal || !winnerSel || !mvpSel) return;
+
+    // Preencher select de times vencedores
+    winnerSel.innerHTML = `<option value="">— Selecionar —</option>` +
+      session.teams.map((_, i) => `<option value="${i}">Time ${i + 1}</option>`).join('');
+
+    // Preencher select de MVPs (todos os jogadores)
+    const allPlayers = session.teams.flat();
+    mvpSel.innerHTML = `<option value="">— Sem MVP —</option>` +
+      allPlayers.map(p => `<option value="${p}">${p}</option>`).join('');
+
+    // Guardar sessionId para uso no submit
+    modal.dataset.sessionId = sessionId;
+    modal.classList.remove('hidden');
+  };
+
+  const confirmFinishMatch = async () => {
+    if (!Storage.isAdmin()) return;
+    const modal = $('modal-finish-match');
+    const sessionId = parseInt(modal.dataset.sessionId);
+    const winnerIdx = parseInt($('finish-winner-select').value);
+    const mvpNick = $('finish-mvp-select').value || null;
+
+    if (isNaN(winnerIdx)) { toast('⚠️ Escolha o time vencedor', 'warn'); return; }
+
+    const session = DB.getSession(sessionId);
+    if (!session || !session.teams) return;
+
+    const btn = $('btn-confirm-finish');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Salvando...'; }
+
+    try {
+      // Registrar partida
+      const matchData = {
+        eventName: session.eventName || '',
+        teams: session.teams.map(t => [...t]),
+        winner: winnerIdx,
+        mvp: mvpNick,
+        date: Date.now(),
+      };
+      const match = Storage.addMatch(matchData);
+
+      // Atualizar stats dos jogadores
+      const cfg = Storage.getScoringConfig();
+      session.teams.forEach((team, ti) => {
+        team.forEach(nick => {
+          const p = Storage.getPlayer(nick);
+          if (p) {
+            p.stats = p.stats || {};
+            p.stats.totalMatches = (p.stats.totalMatches || 0) + 1;
+            if (ti === winnerIdx) {
+              p.stats.wins = (p.stats.wins || 0) + 1;
+              Storage.addPoints(nick, cfg.pointsPerWin);
+            } else {
+              p.stats.losses = (p.stats.losses || 0) + 1;
+            }
+            if (nick === mvpNick) {
+              p.stats.mvps = (p.stats.mvps || 0) + 1;
+              Storage.addPoints(nick, cfg.pointsPerMvp);
+            }
+            Storage.upsertPlayer(nick, p);
+          }
+        });
+      });
+
+      toast('✅ Resultado salvo! Estatísticas atualizadas.');
+      modal.classList.add('hidden');
+      if (DB.isUsingFallback()) renderSessions();
+    } catch(e) {
+      toast('❌ Erro ao salvar: ' + e.message, 'err');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '✅ Salvar resultado'; }
+    }
+  };
+
   const deleteSession = async (id) => {
     if (!window.confirm('Deletar sessão?')) return;
     try {
@@ -792,6 +888,49 @@ const UI = (() => {
     if (out) { out.value = url; out.classList.remove('hidden'); }
     navigator.clipboard.writeText(url).then(() => toast('🔗 Link copiado!')).catch(() => {});
   };
+
+  // ── Admin Scoring Config Modal ─────────────────────────────────────────────
+  const openScoringConfigModal = () => {
+    if (!Storage.isAdmin()) { toast('⚠️ Apenas admin', 'warn'); return; }
+    const cfg = Storage.getScoringConfig();
+    $('scoring-points-win')?.setAttribute('value', cfg.pointsPerWin);
+    $('scoring-points-mvp')?.setAttribute('value', cfg.pointsPerMvp);
+    
+    const rankContainer = $('scoring-ranks-container');
+    if (rankContainer) {
+      rankContainer.innerHTML = cfg.ranks.map((r, i) => `
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="text" class="field-sm" value="${r.name}" readonly style="flex:1;background:rgba(255,255,255,0.03);cursor:not-allowed">
+          <input type="number" class="field-sm" id="rank-min-${i}" value="${r.minPoints}" placeholder="Min pontos" data-rank-idx="${i}">
+        </div>
+      `).join('');
+    }
+    
+    $('modal-scoring-config')?.classList.remove('hidden');
+  };
+
+  const saveScoringConfig = () => {
+    if (!Storage.isAdmin()) return;
+    const pointsWin = parseInt($('scoring-points-win')?.value || 10);
+    const pointsMvp = parseInt($('scoring-points-mvp')?.value || 15);
+    if (pointsWin < 1 || pointsMvp < 1) { toast('⚠️ Pontos devem ser > 0', 'warn'); return; }
+    
+    const cfg = Storage.getScoringConfig();
+    cfg.pointsPerWin = pointsWin;
+    cfg.pointsPerMvp = pointsMvp;
+    
+    // Update rank min points
+    cfg.ranks.forEach((r, i) => {
+      const minInput = $(`rank-min-${i}`);
+      if (minInput) r.minPoints = parseInt(minInput.value) || 0;
+    });
+    
+    Storage.setScoringConfig(cfg);
+    $('modal-scoring-config')?.classList.add('hidden');
+    toast('✅ Configuração salva');
+  };
+
+  const closeScoringConfigModal = () => $('modal-scoring-config')?.classList.add('hidden');
 
   // ══════════════════════════════════════════════════════════════════════════
   //  TAB: TORNEIO
@@ -1068,6 +1207,18 @@ const UI = (() => {
       renderJogadoresTab();
     };
 
+    // Event listeners: Finish Match modal
+    $('modal-finish-close')?.addEventListener('click', () => $('modal-finish-match')?.classList.add('hidden'));
+    $('btn-cancel-finish')?.addEventListener('click', () => $('modal-finish-match')?.classList.add('hidden'));
+    $('btn-confirm-finish')?.addEventListener('click', confirmFinishMatch);
+    $('modal-finish-match')?.addEventListener('click', e => { if (e.target === $('modal-finish-match')) $('modal-finish-match').classList.add('hidden'); });
+
+    // Event listeners: Scoring Config modal
+    $('modal-scoring-close')?.addEventListener('click', closeScoringConfigModal);
+    $('btn-cancel-scoring')?.addEventListener('click', closeScoringConfigModal);
+    $('btn-save-scoring')?.addEventListener('click', saveScoringConfig);
+    $('modal-scoring-config')?.addEventListener('click', e => { if (e.target === $('modal-scoring-config')) closeScoringConfigModal(); });
+
     // Fechar modal ao clicar fora
     document.querySelectorAll('.modal-backdrop').forEach(m => {
       m.addEventListener('click', e => { if (e.target === m) { closeRegisterModal(); closeInviteModal(); } });
@@ -1082,11 +1233,13 @@ const UI = (() => {
     startTournamentManual, startTournamentFromSorteio, pickWinner, resetTournament,
     // jogadores
     openProfile, deletePlayer, openRegisterModal, openInviteModal,
-    closeRegisterModal, closeInviteModal, doRegister, generateInviteLink,
+    closeRegisterModal, closeInviteModal, doRegister, generateInviteLink, promptEditNick,
     // partidas
     confirmPresence, editMyPresence, submitConfirmModal, closeConfirmModal,
     kickFromSession, adminAddToSession, copySessionLink, deleteSession, deleteMatch, drawFromSession,
-    shareSession,
+    shareSession, openFinishMatchModal, confirmFinishMatch,
+    // admin
+    openScoringConfigModal,
     toast,
   };
 })();
