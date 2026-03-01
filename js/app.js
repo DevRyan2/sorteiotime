@@ -492,6 +492,12 @@ const UI = (() => {
 
   // Membro confirma presença pela primeira vez
   const confirmPresence = (sessionId) => {
+    // if database cache isn't ready yet delay the operation; we need the
+    // session object to exist so addConfirmed can actually write it.
+    if (!DB.isReady()) {
+      DB.onReady(() => confirmPresence(sessionId));
+      return;
+    }
     // store-level nick, if present we auto‑prompt
     const stored = Storage.getMyNick();
     const session = DB.getSession(sessionId);
@@ -506,11 +512,15 @@ const UI = (() => {
       // quick confirm dialog
       if (!confirm(`Confirmar presença como ${stored}?`)) return;
       // go ahead and addConfirmed
-      DB.addConfirmed(sessionId, stored).then(() => {
-        Storage.setMyConfirmation(sessionId, { nick: stored, edited: false });
-        Players.autoRegister(stored);
-        toast(`✅ ${stored} confirmado!`);
-        if (DB.isUsingFallback()) renderSessions();
+      DB.addConfirmed(sessionId, stored).then(ok => {
+        if (ok) {
+          Storage.setMyConfirmation(sessionId, { nick: stored, edited: false });
+          Players.autoRegister(stored);
+          toast(`✅ ${stored} confirmado!`);
+          if (DB.isUsingFallback()) renderSessions();
+        } else {
+          toast('⚠️ Não foi possível confirmar presença – sessão não encontrada ou já confirmada', 'warn');
+        }
       }).catch(e => toast('❌ Erro: ' + e.message, 'err'));
       return;
     }
@@ -573,7 +583,13 @@ const UI = (() => {
         if ((session.confirmed || []).some(n => n.toLowerCase() === nick.toLowerCase())) {
           toast('⚠️ Esse nick já está confirmado!', 'warn'); return;
         }
-        await DB.addConfirmed(sessionId, nick);
+        {
+          const ok = await DB.addConfirmed(sessionId, nick);
+          if (!ok) {
+            toast('⚠️ Não foi possível confirmar presença – sessão não encontrada ou já confirmada', 'warn');
+            return;
+          }
+        }
         Storage.setMyConfirmation(sessionId, { nick, edited: false });
         // persist nick for future visits
         if (!Storage.getMyNick()) Storage.setMyNick(nick);
@@ -1080,6 +1096,18 @@ const UI = (() => {
   //  URL Hash (convites e sessões)
   // ══════════════════════════════════════════════════════════════════════════
   const handleHash = () => {
+    // guard: postpone processing until DB cache is ready
+    // when user arrives via a link we may call this before the realtime
+    // listener has populated `_cache`. in that case `DB.getSession` returns
+    // null (or addConfirmed returns false) and the confirmation would not
+    // actually be written server‑side; previously the nick was still stored
+    // locally which led to confusion. to avoid the race we reschedule
+    // handleHash until the database becomes ready, and our confirm logic
+    // now only stores the nick locally once the DB write succeeds.
+    if (!DB.isReady()) {
+      DB.onReady(handleHash);
+      return;
+    }
     // Support both #session=ID and ?session=ID links
     let hash = location.hash.slice(1);
     if (!hash) {
@@ -1283,6 +1311,18 @@ const UI = (() => {
     // Fechar modal ao clicar fora
     document.querySelectorAll('.modal-backdrop').forEach(m => {
       m.addEventListener('click', e => { if (e.target === m) { closeRegisterModal(); closeInviteModal(); } });
+    });
+
+    // global escape key handler to dismiss any overlay or modal that might
+    // get stuck (helps when focus/lock issues are reported).
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') {
+        // hide all backdrops
+        document.querySelectorAll('.modal-backdrop').forEach(m => m.classList.add('hidden'));
+        // also clear draw-overlay if somehow left active
+        const ov = $('drawOverlay');
+        if (ov) ov.classList.remove('active');
+      }
     });
   };
 

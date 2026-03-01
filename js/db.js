@@ -92,15 +92,17 @@ const DB = (() => {
   };
 
   const addConfirmed = async (sessionId, nick) => {
-    const s = _cache[sessionId]; if(!s) return;
-    if (s.confirmed.some(n=>n.toLowerCase()===nick.toLowerCase())) return;
+    const s = _cache[sessionId];
+    if(!s) return false;            // session not found
+    if (s.confirmed.some(n=>n.toLowerCase()===nick.toLowerCase())) return false;
     if (s.format && s.format.includes('v')) {
       const num = parseInt(s.format.split('v')[0],10);
       if (!isNaN(num) && s.confirmed.length >= num*2) return;
     }
-    if (_usingFallback) { s.confirmed=[...s.confirmed,nick]; _saveFallback(); if(_onChange)_onChange(); return; }
+    if (_usingFallback) { s.confirmed=[...s.confirmed,nick]; _saveFallback(); if(_onChange)_onChange(); return true; }
     const key = nick.toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,30)||'p'+Date.now();
     await _db.ref(`sessions/${sessionId}/confirmed/${key}`).set({ nick, addedAt:Date.now() });
+    return true;
   };
 
   const replaceConfirmed = async (sessionId, oldNick, newNick) => {
