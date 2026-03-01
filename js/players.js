@@ -220,7 +220,6 @@ const Players = (() => {
     // Stats section
     const stats_y = 330;
     const stats_box_height = 90;
-    const stats_spacing = 150;
 
     const drawStatBox = (x, label, value, color) => {
       ctx.fillStyle = 'rgba(255,255,255,0.05)';
@@ -305,6 +304,9 @@ const Players = (() => {
       URL.revokeObjectURL(url);
     });
   };
+
+  // ── Render: card de perfil completo ──────────────────────────────────────
+  const renderProfile = (nick) => {
     const p     = Storage.getPlayer(nick);
     const stats = getStats(nick);
     if (!p || !stats) return '';

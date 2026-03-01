@@ -18,7 +18,7 @@
 </div>
 
 <!-- Overlay de sorteio -->
-<div class="draw-overlay" id="drawOverlay">
+<div class="draw-overlay" id="drawOverlay" style="z-index: -1 !important; pointer-events: none !important;">
   <div class="draw-spinner"></div>
   <div class="draw-text">Sorteando times...</div>
 </div>
@@ -26,7 +26,10 @@
 <!-- Toast -->
 <div class="toast" id="toast"></div>
 
-<!-- Modal: Resultado do sorteio de sessão -->
+<!-- MODAIS DISABLED FOR TESTING -->
+<style>
+  .modal-backdrop { display: none !important; pointer-events: none !important; }
+</style>
 <div class="modal-backdrop hidden" id="modal-draw-result">
   <div class="modal-box" style="max-width:480px">
     <div class="modal-head">
@@ -200,6 +203,7 @@
     <button class="tab-btn active" id="tab-btn-sorteio" data-tab="sorteio">🎲 <span>Sorteio</span></button>
     <button class="tab-btn" id="tab-btn-partidas"  data-tab="partidas" >📅 <span>Partidas</span></button>
     <button class="tab-btn" id="tab-btn-jogadores" data-tab="jogadores">👤 <span>Jogadores</span></button>
+    <button class="tab-btn" id="tab-btn-perfil"    data-tab="perfil"   >⭐ <span>Perfil</span></button>
     <button class="tab-btn" id="tab-btn-torneio"   data-tab="torneio"  >🏆 <span>Torneio</span></button>
   </nav>
 
@@ -436,6 +440,14 @@
   <div id="tab-torneio" class="hidden">
     <div id="torneio-content">
       <p style="color:var(--muted);font-size:13px;padding:20px 0">Carregando...</p>
+    </div>
+  </div>
+
+  <!-- TAB: PERFIL                                                 -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <div id="tab-perfil" class="hidden">
+    <div id="perfil-content">
+      <p style="color:var(--muted);font-size:13px;padding:20px 0;text-align:center">👤 Clique em um jogador na aba Jogadores para ver o perfil</p>
     </div>
   </div>
 

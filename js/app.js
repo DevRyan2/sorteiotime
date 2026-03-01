@@ -18,7 +18,7 @@ const UI = (() => {
   const confirm = (msg) => window.confirm(msg);
 
   // ── Tabs ───────────────────────────────────────────────────────────────────
-  const TABS = ['sorteio', 'partidas', 'jogadores', 'torneio'];
+  const TABS = ['sorteio', 'partidas', 'jogadores', 'perfil', 'torneio'];
   let activeTab = 'sorteio';
 
   const showTab = (tab) => {
@@ -30,6 +30,7 @@ const UI = (() => {
     });
     if (tab === 'partidas')   renderPartidasTab();
     if (tab === 'jogadores')  renderJogadoresTab();
+    if (tab === 'perfil')     renderPerfilTab();
     if (tab === 'torneio')    renderTorneioTab();
     if (tab === 'sorteio')    { /* state kept */ }
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -838,7 +839,8 @@ const UI = (() => {
 
   const openProfile = (nick) => {
     profileNick = nick;
-    renderJogadoresTab();
+    renderPerfilTab();
+    showTab('perfil');
   };
 
   const deletePlayer = (nick) => {
@@ -921,7 +923,8 @@ const UI = (() => {
     
     // Update rank min points
     cfg.ranks.forEach((r, i) => {
-      const minInput = $(`rank-min-${i}`);
+      const rankId = 'rank-min-' + i;
+      const minInput = $(rankId);
       if (minInput) r.minPoints = parseInt(minInput.value) || 0;
     });
     
@@ -1013,6 +1016,20 @@ const UI = (() => {
     Tournament.reset();
     renderTorneioTab();
     toast('🗑 Torneio zerado');
+  };
+
+  // ── Tab: Perfil ────────────────────────────────────────────────────────────
+  const renderPerfilTab = () => {
+    const wrap = $('perfil-content');
+    if (!wrap) return;
+
+    if (!profileNick) {
+      wrap.innerHTML = `<p style="color:var(--muted);font-size:13px;padding:20px 0;text-align:center">👤 Clique em um jogador na aba Jogadores para ver o perfil</p>`;
+      return;
+    }
+
+    const profileHtml = Players.renderProfile(profileNick);
+    wrap.innerHTML = profileHtml || '';
   };
 
   // ══════════════════════════════════════════════════════════════════════════
