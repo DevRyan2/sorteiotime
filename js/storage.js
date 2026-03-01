@@ -123,6 +123,27 @@ const Storage = (() => {
   const getAdminKey= ()    => get(K.ADMIN_KEY) || '';
   const setAdminKey= (k)   => set(K.ADMIN_KEY, k);
 
+  // A senha de administrador é fixa; ver README.md para o valor.
+  // Essa rotina verifica se a senha informada bate com a constante e,
+  // quando correta, guarda a chave em localStorage para que, em
+  // atualizações futuras, possamos revalidar (não é estritamente
+  // necessário, mas mantém o `getAdminKey` com algum uso).
+  const checkPassword = (pw) => {
+    const ADMIN_PW = 'ADMDAVARZEAKK2';
+    if (pw === ADMIN_PW) {
+      setAdminKey(pw);
+      return true;
+    }
+    return false;
+  };
+
+  // Ao carregar, caso já exista uma chave válida em storage, ativamos o
+  // modo admin automaticamente. Isso permite manter o login enquanto a
+  // aba estiver aberta (ou até o usuário desativar).
+  if (getAdminKey() === 'ADMDAVARZEAKK2') {
+    setAdmin(true);
+  }
+
   // ── Tournament ────────────────────────────────────────────────────────────
   const getTournament  = ()  => get(K.TOURNAMENT);
   const setTournament  = (t) => set(K.TOURNAMENT, t);

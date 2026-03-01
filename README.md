@@ -118,6 +118,9 @@ O login dura enquanto a aba estiver aberta (fecha a aba → precisa logar de nov
 |---|---|
 | 🎲 **Sorteio** | Cola nomes, configura times, gera mensagem pro WhatsApp |
 | 📅 **Salas (admin)** | Cria sala com formato 1v1/2v2/3v3/4v4, copia link e manda pro grupo |
+| 📤 **Compartilhar sala** | Botão para enviar o link direto pelo WhatsApp |
+| 🔒 **Limite automático** | Só permite confirmações até a capacidade do formato; mostra "Sala cheia" e bloqueia entrada |
+| 🕒 **Data/hora padrão** | Campos de agendamento já vêm preenchidos com a hora atual no desktop |
 | ✅ **Confirmação** | Membro abre o link → digita o nick → aparece pra você em tempo real |
 | 🔒 **Anti-spam** | Cada dispositivo confirma uma única vez; pode corrigir o nick 1x |
 | 🎲 **Sorteio da sala** | Admin clica "Sortear times" com os confirmados e manda no WhatsApp |

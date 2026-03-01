@@ -4,7 +4,11 @@
 //  Cole aqui as credenciais do seu projeto Firebase
 // ═══════════════════════════════════════════════════════════════
 
-const FIREBASE_CONFIG = {
+// the object must be exposed on the global scope so that `db.js` can
+// read it via `window.FIREBASE_CONFIG`. Top‑level `const`/`let` declarations
+// are *not* added to `window`, which was causing the fallback message even
+// though the values were filled in correctly.
+window.FIREBASE_CONFIG = {
   apiKey:            "AIzaSyAZQSprWAqNSlD9QGN0tWvM2Kl2YVxHqzY",
   authDomain:        "ff-squad-manager.firebaseapp.com",
   databaseURL:       "https://ff-squad-manager-default-rtdb.firebaseio.com",   // <- o mais importante: termina com .firebaseio.com

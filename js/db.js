@@ -117,6 +117,14 @@ const DB = (() => {
 
     // Checar duplicata no cache local
     if (s.confirmed.some(n => n.toLowerCase() === nick.toLowerCase())) return;
+    // enforce capacity based on format string (e.g. "2v2" → 4 jogadores)
+    if (s.format && typeof s.format === 'string' && s.format.includes('v')) {
+      const num = parseInt(s.format.split('v')[0], 10);
+      if (!isNaN(num)) {
+        const cap = num * 2; // times times players per time
+        if (s.confirmed.length >= cap) return;
+      }
+    }
 
     if (_usingFallback) {
       s.confirmed = [...s.confirmed, nick];

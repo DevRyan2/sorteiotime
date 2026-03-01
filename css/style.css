@@ -259,6 +259,7 @@ input.invite-link-out { background:rgba(0,0,0,0.5);border:1px solid rgba(37,211,
 .conf-status { padding:10px 14px;border-radius:12px;font-size:13px;font-weight:500;margin:10px 0;display:flex;align-items:center;flex-wrap:wrap;gap:6px; }
 .conf-ok      { background:rgba(37,211,102,0.1);border:1px solid rgba(37,211,102,0.25);color:var(--accent); }
 .conf-pending { background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.25);color:#fbbf24; }
+ .conf-full    { background:rgba(255,77,109,0.08);border:1px solid rgba(255,77,109,0.25);color:var(--red); }
 
 .session-confirmed-list { display:flex;flex-direction:column;gap:4px;margin-top:10px; }
 .conf-row { display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:rgba(0,0,0,0.25);border:1px solid var(--border2);border-radius:10px; }

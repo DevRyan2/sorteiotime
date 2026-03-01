@@ -203,6 +203,18 @@ const UI = (() => {
     const createBlock = $('session-create-block');
     if (createBlock) createBlock.classList.toggle('hidden', !Storage.isAdmin());
 
+    // sempre definir data/hora atual como padrão quando o formulário for
+    // mostrado — em celulares já acontece automaticamente via HTML, mas
+    // em desktops o campo fica vazio a menos que o usuário digite.
+    const dateInput = $('session-date');
+    if (dateInput && !dateInput.value) {
+      const now = new Date();
+      const pad = n => n.toString().padStart(2, '0');
+      const val = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}` +
+                  `T${pad(now.getHours())}:${pad(now.getMinutes())}`;
+      dateInput.value = val;
+    }
+
     // Aviso se Firebase não estiver configurado
     const fbWarn = $('firebase-warn');
     if (fbWarn) fbWarn.classList.toggle('hidden', !DB.isUsingFallback());
@@ -237,6 +249,7 @@ const UI = (() => {
       const fmt       = FORMATS[s.format] || null;
       const needed    = fmt ? fmt.players : null;
       const hasEnough = fmt ? confirmed.length >= needed : confirmed.length >= 2;
+      const isFull    = hasEnough; // same thing, but clearer semantics
 
       // Badge de formato
       const fmtBadge = fmt
@@ -259,7 +272,11 @@ const UI = (() => {
               : `<span style="color:var(--muted);font-size:11px;margin-left:8px">(edição usada)</span>`}
           </div>`;
         } else {
-          myStatus = `<div class="conf-status conf-pending">⚠️ Você ainda não confirmou presença.</div>`;
+          if (isFull) {
+            myStatus = `<div class="conf-status conf-full">⚠️ Sala cheia</div>`;
+          } else {
+            myStatus = `<div class="conf-status conf-pending">⚠️ Você ainda não confirmou presença.</div>`;
+          }
         }
       }
 
@@ -275,11 +292,12 @@ const UI = (() => {
         : `<p style="color:var(--muted);font-size:12px;margin-top:8px">Nenhuma confirmação ainda.</p>`;
 
       // Botão de sorteio (admin, quando tem jogadores suficientes)
-      const drawBtn = admin && hasEnough
-        ? `<button class="btn btn-primary btn-sm" onclick="UI.drawFromSession(${s.id})">🎲 Sortear times</button>`
-        : (admin && !hasEnough && fmt)
-          ? `<button class="btn btn-ghost btn-sm" disabled title="Faltam ${needed - confirmed.length} jogadores">🎲 Sortear times</button>`
-          : '';
+      const drawLabel = hasEnough ? '🎲 Criar sala' : '🎲 Sortear times';
+      const drawBtn = admin && (hasEnough || fmt)
+        ? `<button class="btn ${hasEnough ? 'btn-primary' : 'btn-ghost'} btn-sm"` +
+            (hasEnough ? ` onclick="UI.drawFromSession(${s.id})"` : '') +
+            `${hasEnough ? '' : ` disabled title="Faltam ${needed - confirmed.length} jogadores"`}>${drawLabel}</button>`
+        : '';
 
       return `<div class="session-card">
         <div class="session-head">
@@ -297,10 +315,14 @@ const UI = (() => {
         ${listHTML}
 
         <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
-          ${(!myConf && !admin)
+          ${(!myConf && !admin && !isFull)
             ? `<button class="btn btn-primary btn-sm" onclick="UI.confirmPresence(${s.id})">✅ Confirmar presença</button>`
             : ''}
+          ${(!myConf && !admin && isFull)
+            ? `<button class="btn btn-secondary btn-sm" disabled>Sala cheia</button>`
+            : ''}
           <button class="btn btn-ghost btn-sm" onclick="UI.copySessionLink(${s.id})">🔗 Copiar link</button>
+          <button class="btn btn-ghost btn-sm" onclick="UI.shareSession(${s.id})">📤 WhatsApp</button>
           ${drawBtn}
         </div>
       </div>`;
@@ -350,7 +372,14 @@ const UI = (() => {
         format: format || null,
       });
       $('session-name').value = '';
-      $('session-date').value = '';
+      // reset date field to now so admin doesn't have to re-enter
+      const dateInput = $('session-date');
+      if (dateInput) {
+        const now = new Date();
+        const pad = n => n.toString().padStart(2, '0');
+        dateInput.value = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}` +
+                          `T${pad(now.getHours())}:${pad(now.getMinutes())}`;
+      }
       toast('📅 Sala criada!');
       // Firebase listener atualiza automaticamente; fallback precisa renderizar
       if (DB.isUsingFallback()) renderSessions();
@@ -435,8 +464,6 @@ ${'━'.repeat(26)}
 `;
       team.forEach(p => { msg += `  • ${p}
 `; });
-      msg += '
-';
     });
     if (extras.length > 0) {
       msg += `*Reservas*
@@ -455,6 +482,14 @@ ${'━'.repeat(26)}
   const confirmPresence = (sessionId) => {
     const myConf = Storage.getMyConfirmation(sessionId);
     if (myConf) { toast('⚠️ Você já confirmou como ' + myConf.nick, 'warn'); return; }
+
+    const session = DB.getSession(sessionId);
+    const fmt = FORMATS[session?.format] || null;
+    const needed = fmt ? fmt.players : 2;
+    if (session && (session.confirmed || []).length >= needed) {
+      toast('⚠️ Sala já está cheia');
+      return;
+    }
 
     const modal = $('modal-confirm');
     if (!modal) return;
@@ -487,7 +522,7 @@ ${'━'.repeat(26)}
   };
 
   // Submete o modal de confirmação (serve pra confirm e edit)
-  const submitConfirmModal = () => {
+  const submitConfirmModal = async () => {
     const modal     = $('modal-confirm');
     const sessionId = parseInt(modal.dataset.sessionId);
     const mode      = modal.dataset.mode;
@@ -503,6 +538,13 @@ ${'━'.repeat(26)}
     if (btn2) { btn2.disabled = true; btn2.textContent = '⏳ Salvando...'; }
     try {
       if (mode === 'confirm') {
+        // respect capacity again just before sending to DB (race condition)
+        const fmt = FORMATS[session.format] || null;
+        const needed = fmt ? fmt.players : 2;
+        if ((session.confirmed || []).length >= needed) {
+          toast('⚠️ Sala já está cheia');
+          return;
+        }
         if ((session.confirmed || []).some(n => n.toLowerCase() === nick.toLowerCase())) {
           toast('⚠️ Esse nick já está confirmado!', 'warn'); return;
         }
@@ -546,6 +588,13 @@ ${'━'.repeat(26)}
     if (!nick?.trim()) return;
     const session = DB.getSession(sessionId);
     if (!session) return;
+    // enforce capacity when admin manually adds
+    const fmt = FORMATS[session.format] || null;
+    const needed = fmt ? fmt.players : Infinity;
+    if ((session.confirmed || []).length >= needed) {
+      toast('⚠️ Sala já está cheia');
+      return;
+    }
     if ((session.confirmed || []).some(n => n.toLowerCase() === nick.trim().toLowerCase())) {
       toast('⚠️ Nick já está na lista', 'warn'); return;
     }
@@ -559,8 +608,29 @@ ${'━'.repeat(26)}
   };
 
   const copySessionLink = (sessionId) => {
-    const url = `${location.href.split('#')[0]}#session=${sessionId}`;
+    // include both query param and hash to improve link recognition in chat apps
+    // origin will be "null" when running from file://, which produces a
+    // broken link. fall back to using the full href in that case.
+    let urlBase;
+    if (!window.location.origin || window.location.origin === 'null' || window.location.origin.startsWith('file')) {
+      urlBase = window.location.href.split('#')[0].split('?')[0];
+    } else {
+      urlBase = `${window.location.origin}${window.location.pathname}`;
+    }
+    const url = `${urlBase}?session=${sessionId}#session=${sessionId}`;
     navigator.clipboard.writeText(url).then(() => toast('🔗 Link copiado! Mande pro grupo.')).catch(() => toast('Copie: ' + url));
+  };
+
+  const shareSession = (sessionId) => {
+    let urlBase;
+    if (!window.location.origin || window.location.origin === 'null' || window.location.origin.startsWith('file')) {
+      urlBase = window.location.href.split('#')[0].split('?')[0];
+    } else {
+      urlBase = `${window.location.origin}${window.location.pathname}`;
+    }
+    const url = `${urlBase}?session=${sessionId}#session=${sessionId}`;
+    const text = `Participe da sala: ${url}`;
+    window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
   };
 
   const deleteSession = async (id) => {
@@ -773,7 +843,16 @@ ${'━'.repeat(26)}
   //  URL Hash (convites e sessões)
   // ══════════════════════════════════════════════════════════════════════════
   const handleHash = () => {
-    const hash = location.hash.slice(1);
+    // Support both #session=ID and ?session=ID links
+    let hash = location.hash.slice(1);
+    if (!hash) {
+      const qp = new URLSearchParams(location.search);
+      if (qp.has('session')) {
+        hash = 'session=' + qp.get('session');
+        // remove query param from url so it doesn't persist
+        history.replaceState(null, '', location.pathname + location.hash);
+      }
+    }
     if (!hash) return;
 
     // Link de sessão: #session=ID
@@ -950,6 +1029,7 @@ ${'━'.repeat(26)}
     // partidas
     confirmPresence, editMyPresence, submitConfirmModal, closeConfirmModal,
     kickFromSession, adminAddToSession, copySessionLink, deleteSession, deleteMatch, drawFromSession,
+    shareSession,
     toast,
   };
 })();
