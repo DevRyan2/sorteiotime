@@ -18,7 +18,7 @@ const UI = (() => {
   const confirm = (msg) => window.confirm(msg);
 
   // ── Tabs ───────────────────────────────────────────────────────────────────
-  const TABS = ['sorteio', 'partidas', 'jogadores', 'perfil', 'torneio'];
+  const TABS = ['sorteio', 'partidas', 'jogadores', 'perfil', 'rank', 'torneio'];
   let activeTab = 'sorteio';
 
   const showTab = (tab) => {
@@ -31,6 +31,7 @@ const UI = (() => {
     if (tab === 'partidas')   renderPartidasTab();
     if (tab === 'jogadores')  renderJogadoresTab();
     if (tab === 'perfil')     renderPerfilTab();
+    if (tab === 'rank')       renderRankTab();
     if (tab === 'torneio')    renderTorneioTab();
     if (tab === 'sorteio')    { /* state kept */ }
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -462,15 +463,13 @@ const UI = (() => {
 
     // Montar mensagem pra WA
     const date = new Date().toLocaleDateString('pt-BR');
-    // prettier message using Sorteio rules text when available
-    const rules = (typeof Sorteio.getRulesText === 'function') ? Sorteio.getRulesText() : '';
-    const badges = ['🟢','🔵','🟣','🟡','🔴','🟤','⚪','🟠'];
+    const slotEmojis = ['🟢','🔴','🔵','🟡','🟣','🟠','⚪','🟤'];
     let msg = '';
     if (session.eventName) msg += `🏆 *${session.eventName}*\n`;
-    msg += `🔫 *SORTEIO — ${date}*\n${'━'.repeat(26)}\n\n`;
+    msg += `🔫 *SORTEIO DE TIMES — ${date}*\n${'━'.repeat(26)}\n\n`;
     teams.forEach((team, i) => {
-      msg += `${badges[i % badges.length]} *Time ${i + 1}* · ${team.length} jogador(es)\n`;
-      team.forEach(p => { msg += `  • ${p}\n`; });
+      msg += `${slotEmojis[i % slotEmojis.length]} *Slot ${i + 1}* — ${team.length} jogador${team.length !== 1 ? 'es' : ''}\n`;
+      team.forEach((p, idx) => { msg += `  🎮 *${idx + 1}.* ${p}\n`; });
       msg += '\n';
     });
     if (extras.length > 0) {
@@ -478,13 +477,8 @@ const UI = (() => {
       extras.forEach(p => { msg += `  • ${p}\n`; });
       msg += '\n';
     }
-    if (rules) {
-      msg += `${'─'.repeat(26)}\n`;
-      msg += `*Regras da sala*\n`;
-      // rules likely contains multiple lines; append as-is
-      msg += rules + '\n';
-    }
-    msg += `\n✅ Sorteado automaticamente`;
+    const rules = typeof Sorteio.getRulesText === 'function' ? Sorteio.getRulesText() : '';
+    if (rules) msg += `${'─'.repeat(26)}\n${rules}\n`;
 
     const previewEl = $('draw-result-preview');
     if (previewEl) previewEl.textContent = msg;
@@ -514,6 +508,7 @@ const UI = (() => {
       // go ahead and addConfirmed
       DB.addConfirmed(sessionId, stored).then(() => {
         Storage.setMyConfirmation(sessionId, { nick: stored, edited: false });
+        Players.autoRegister(stored);
         toast(`✅ ${stored} confirmado!`);
         if (DB.isUsingFallback()) renderSessions();
       }).catch(e => toast('❌ Erro: ' + e.message, 'err'));
@@ -581,9 +576,9 @@ const UI = (() => {
         await DB.addConfirmed(sessionId, nick);
         Storage.setMyConfirmation(sessionId, { nick, edited: false });
         // persist nick for future visits
-        if (!Storage.getMyNick()) {
-          Storage.setMyNick(nick);
-        }
+        if (!Storage.getMyNick()) Storage.setMyNick(nick);
+        // auto-criar perfil se não existir
+        Players.autoRegister(nick);
         toast(`✅ ${nick} confirmado!`);
       } else {
         const oldNick = modal.dataset.oldNick;
@@ -680,9 +675,77 @@ const UI = (() => {
 
   const deleteMatch = (id) => {
     if (!confirm('Deletar partida do histórico?')) return;
-    Storage.deleteMatch(id);
+    DB.deleteMatch(id).catch(()=>{});
     renderMatchHistory();
     toast('🗑 Partida removida');
+  };
+
+  // ══════════════════════════════════════════════════════════════════════════
+  //  TAB: RANK
+  // ══════════════════════════════════════════════════════════════════════════
+  const renderRankTab = () => {
+    const wrap = $('rank-content');
+    if (!wrap) return;
+
+    const players = Players.getList();
+    if (players.length === 0) {
+      wrap.innerHTML = `<div class="card"><p style="color:var(--muted);font-size:13px;padding:12px 0">Nenhum jogador cadastrado ainda.</p></div>`;
+      return;
+    }
+
+    const now   = Date.now();
+    const WEEK  = 7  * 24 * 60 * 60 * 1000;
+    const MONTH = 30 * 24 * 60 * 60 * 1000;
+    const medals = ['🥇','🥈','🥉'];
+
+    const buildLeaderboard = (since) => {
+      const rows = players.map(p => {
+        const s = Players.getStatsInPeriod(p.nick, since);
+        return s ? { ...p, ...s } : null;
+      }).filter(Boolean)
+        .filter(p => since === 0 ? (p.pts > 0) : (p.total > 0))
+        .sort((a, b) => b.pts - a.pts)
+        .slice(0, 10);
+
+      if (rows.length === 0) {
+        return `<p style="color:var(--muted);font-size:13px;padding:12px 0">Sem partidas no período.</p>`;
+      }
+
+      return rows.map((p, i) => `
+        <div class="rank-row ${i < 3 ? 'rank-top-'+i : ''}" onclick="UI.openProfile('${p.nick}')">
+          <div class="rank-pos">${medals[i] || `#${i+1}`}</div>
+          <div class="rank-avatar-sm">${p.nick.charAt(0).toUpperCase()}</div>
+          <div class="rank-info">
+            <div class="rank-nick">${p.nick}</div>
+            <div class="rank-badge-sm">${p.rank || 'Bronze'}</div>
+          </div>
+          <div class="rank-nums">
+            <span class="rank-pts-big">${p.pts}pts</span>
+            <span class="rank-sub">${p.wins}V · ${p.mvps}MVP · ${p.winrate}%WR</span>
+          </div>
+        </div>`).join('');
+    };
+
+    wrap.innerHTML = `
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title"><div class="card-icon">🗓</div>Melhores da Semana</div>
+        </div>
+        <div class="rank-list">${buildLeaderboard(now - WEEK)}</div>
+      </div>
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title"><div class="card-icon">📅</div>Melhores do Mês</div>
+        </div>
+        <div class="rank-list">${buildLeaderboard(now - MONTH)}</div>
+      </div>
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title"><div class="card-icon">🏆</div>Ranking da Season</div>
+          <span style="font-size:11px;color:var(--muted)">pontos acumulados</span>
+        </div>
+        <div class="rank-list">${buildLeaderboard(0)}</div>
+      </div>`;
   };
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -739,7 +802,7 @@ const UI = (() => {
     const cfg       = Storage.getScoringConfig();
     const now       = Date.now();
 
-    Storage.addMatch({
+    await DB.addMatch({
       eventName: session.eventName || 'Partida',
       teams:     session.teams.map(t => [...t]),
       winner:    winnerIdx, mvp: mvpNick || null, date: now, sessionId,
@@ -748,11 +811,13 @@ const UI = (() => {
     session.teams.forEach((team, ti) => {
       const won = ti === winnerIdx;
       team.forEach(nick => {
-        if (Storage.getPlayer(nick)) {
-          Players.recordMatch(nick, { won, mvp: nick === mvpNick, matchDate: now });
-          if (won)             Storage.addPoints(nick, cfg.pointsPerWin || 10);
-          if (nick === mvpNick) Storage.addPoints(nick, cfg.pointsPerMvp || 15);
-        }
+        // Auto-criar perfil se não existir
+        Players.autoRegister(nick);
+        Players.recordMatch(nick, { won, mvp: nick === mvpNick, matchDate: now });
+        if (won)              Storage.addPoints(nick, cfg.pointsPerWin || 10);
+        if (nick === mvpNick) Storage.addPoints(nick, cfg.pointsPerMvp || 15);
+        // Sync pontos pro Firebase
+        DB.upsertPlayer(nick, Storage.getPlayer(nick)).catch(()=>{});
       });
     });
 
@@ -876,7 +941,7 @@ const UI = (() => {
   const deletePlayer = (nick) => {
     if (!Storage.isAdmin()) return;
     if (!confirm(`Deletar ${nick}? Isso não remove o histórico de partidas.`)) return;
-    Storage.deletePlayer(nick);
+    DB.deletePlayer(nick).catch(()=>{});
     profileNick = null;
     renderJogadoresTab();
     toast('🗑 Jogador removido');
@@ -884,7 +949,13 @@ const UI = (() => {
 
   const openRegisterModal = () => {
     const modal = $('modal-register');
-    if (modal) { modal.classList.remove('hidden'); $('reg-nick')?.focus(); }
+    if (!modal) return;
+    // Pré-preencher com nick salvo do dispositivo
+    const saved = Storage.getMyNick();
+    const nickInput = $('reg-nick');
+    if (nickInput && saved && !nickInput.value) nickInput.value = saved;
+    modal.classList.remove('hidden');
+    if (!saved) nickInput?.focus();
   };
 
   const closeRegisterModal = () => {
@@ -893,9 +964,10 @@ const UI = (() => {
 
   const doRegister = () => {
     const nick = $('reg-nick')?.value.trim();
-    const rank = $('reg-rank')?.value || 'Bronze';
     if (!nick) { toast('⚠️ Informe o nick', 'warn'); return; }
-    if (Players.register(nick, rank)) {
+    if (Players.register(nick)) {
+      // Salvar nick do dispositivo se ainda não tem
+      if (!Storage.getMyNick()) Storage.setMyNick(nick);
       toast(`✅ ${nick} cadastrado!`);
       closeRegisterModal();
       renderJogadoresTab();
@@ -1228,7 +1300,7 @@ const UI = (() => {
     kickFromSession, adminAddToSession, copySessionLink, deleteSession, deleteMatch, drawFromSession,
     shareSession, openFinishMatchModal, confirmFinishMatch,
     // admin / scoring
-    openScoringConfigModal, renderPerfilTab,
+    openScoringConfigModal, renderPerfilTab, renderRankTab,
     toast,
   };
 })();

@@ -73,14 +73,6 @@
       <label class="field-label">Nick no Free Fire</label>
       <input type="text" class="field-full" id="reg-nick" placeholder="Seu nick exato">
     </div>
-    <div class="modal-field-group">
-      <label class="field-label">Rank atual</label>
-      <select class="field-sm" id="reg-rank" style="width:100%">
-        <option>Bronze</option><option>Prata</option><option>Ouro</option>
-        <option>Platina</option><option>Diamante</option><option>Mestre</option>
-        <option>Grão-Mestre</option><option>Heroico</option><option>Desafiante</option>
-      </select>
-    </div>
     <div class="btn-bar" style="margin-top:4px">
       <button class="btn btn-primary btn-full" id="btn-do-register">✅ Cadastrar</button>
     </div>
@@ -138,6 +130,7 @@
     <button class="tab-btn" id="tab-btn-partidas"  data-tab="partidas" >📅 <span>Partidas</span></button>
     <button class="tab-btn" id="tab-btn-jogadores" data-tab="jogadores">👤 <span>Jogadores</span></button>
     <button class="tab-btn" id="tab-btn-perfil"    data-tab="perfil"   >⭐ <span>Perfil</span></button>
+    <button class="tab-btn" id="tab-btn-rank"      data-tab="rank"     >🏅 <span>Rank</span></button>
     <button class="tab-btn" id="tab-btn-torneio"   data-tab="torneio"  >🏆 <span>Torneio</span></button>
   </nav>
 
@@ -364,6 +357,15 @@
   <!-- ═══════════════════════════════════════════════════════════ -->
   <div id="tab-jogadores" class="hidden">
     <div id="jogadores-content">
+      <p style="color:var(--muted);font-size:13px;padding:20px 0">Carregando...</p>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- TAB: RANK                                                   -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <div id="tab-rank" class="hidden">
+    <div id="rank-content">
       <p style="color:var(--muted);font-size:13px;padding:20px 0">Carregando...</p>
     </div>
   </div>
