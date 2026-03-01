@@ -123,6 +123,14 @@ const Storage = (() => {
   const getAdminKey= ()    => get(K.ADMIN_KEY) || '';
   const setAdminKey= (k)   => set(K.ADMIN_KEY, k);
 
+  // ── Nick persistente do usuário ───────────────────────────────────────
+  // Guardamos o nick que o dispositivo usou para confirmar presença pela
+  // primeira vez; o usuário pode alterá-lo até 2 vezes.
+  const getMyNick        = () => get('ff_my_nick') || '';
+  const setMyNick        = (n) => set('ff_my_nick', n);
+  const getNickEdits     = () => get('ff_my_nick_edits') || 0;
+  const incrementNickEdits = () => set('ff_my_nick_edits', getNickEdits() + 1);
+
   // A senha de administrador é fixa; ver README.md para o valor.
   // Essa rotina verifica se a senha informada bate com a constante e,
   // quando correta, guarda a chave em localStorage para que, em
@@ -130,8 +138,9 @@ const Storage = (() => {
   // necessário, mas mantém o `getAdminKey` com algum uso).
   const checkPassword = (pw) => {
     const ADMIN_PW = 'ADMDAVARZEAKK2';
-    if (pw === ADMIN_PW) {
-      setAdminKey(pw);
+    if (typeof pw !== 'string') return false;
+    if (pw.trim() === ADMIN_PW) {
+      setAdminKey(pw.trim());
       return true;
     }
     return false;
@@ -157,6 +166,7 @@ const Storage = (() => {
     getMyConfirmation, setMyConfirmation,
     isAdmin, setAdmin, getAdminKey, setAdminKey,
     checkPassword,
+    getMyNick, setMyNick, getNickEdits, incrementNickEdits,
     getTournament, setTournament, clearTournament,
   };
 })();
