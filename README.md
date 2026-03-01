@@ -1,62 +1,146 @@
 # FF Squad Manager 🎮
 
-Gerenciador completo de partidas de Free Fire: sorteio de times, perfis de jogadores, conquistas, histórico e modo torneio.
+Gerenciador completo de partidas de Free Fire com **confirmações em tempo real via Firebase**.
 
-## 📁 Estrutura
+---
 
+## 🚀 Como colocar no ar (GitHub Pages + Firebase)
+
+### Passo 1 — Criar o projeto no Firebase
+
+1. Acesse **https://console.firebase.google.com**
+2. Clique em **"Adicionar projeto"**
+3. Dê um nome (ex: `ff-squad-manager`) → avançar → desativar Google Analytics → **Criar projeto**
+4. Quando terminar, clique em **"Continuar"**
+
+---
+
+### Passo 2 — Ativar o Realtime Database
+
+1. No menu lateral esquerdo, clique em **"Build" → "Realtime Database"**
+2. Clique em **"Criar banco de dados"**
+3. Escolha a região mais próxima (ex: `us-central1` é padrão)
+4. Em "Regras de segurança" → selecione **"Iniciar no modo de teste"** → **Ativar**
+
+   > Isso permite leitura e escrita públicas por 30 dias — suficiente pra usar normalmente.
+   > Depois desse prazo você pode renovar ou usar as regras abaixo.
+
+**Regras recomendadas** (vão em "Regras" dentro do Realtime Database):
+```json
+{
+  "rules": {
+    "sessions": {
+      ".read": true,
+      ".write": true
+    }
+  }
+}
 ```
-ff-sorteio/
-├── index.html          # Shell principal com todas as abas
-├── css/
-│   └── style.css       # Todos os estilos
-└── js/
-    ├── storage.js      # Camada de dados (localStorage)
-    ├── players.js      # Perfis, stats, conquistas
-    ├── tournament.js   # Modo torneio / chaveamento
-    ├── sorteio.js      # Lógica de sorteio de times
-    └── app.js          # Controlador principal de UI
+
+---
+
+### Passo 3 — Pegar as credenciais do Firebase
+
+1. No menu lateral, clique no ícone de engrenagem ⚙️ → **"Configurações do projeto"**
+2. Role para baixo até **"Seus aplicativos"**
+3. Clique em **"</ >" (Web)**
+4. Dê um apelido (ex: `ff-web`) → clique **"Registrar app"**
+5. Vai aparecer um código assim:
+
+```js
+const firebaseConfig = {
+  apiKey: "AIzaSy...",
+  authDomain: "ff-squad-manager.firebaseapp.com",
+  databaseURL: "https://ff-squad-manager-default-rtdb.firebaseio.com",
+  projectId: "ff-squad-manager",
+  storageBucket: "ff-squad-manager.appspot.com",
+  messagingSenderId: "123456789",
+  appId: "1:123456789:web:abc123"
+};
 ```
+
+6. **Copie esses valores** e cole no arquivo `js/firebase-config.js` do projeto
+
+---
+
+### Passo 4 — Configurar o firebase-config.js
+
+Abra o arquivo `js/firebase-config.js` e substitua os `"COLE_AQUI"` pelos valores do passo anterior:
+
+```js
+const FIREBASE_CONFIG = {
+  apiKey:            "AIzaSy...",
+  authDomain:        "ff-squad-manager.firebaseapp.com",
+  databaseURL:       "https://ff-squad-manager-default-rtdb.firebaseio.com",  // <- obrigatório
+  projectId:         "ff-squad-manager",
+  storageBucket:     "ff-squad-manager.appspot.com",
+  messagingSenderId: "123456789",
+  appId:             "1:123456789:web:abc123",
+};
+```
+
+---
+
+### Passo 5 — Subir no GitHub Pages
+
+1. Crie um repositório no GitHub (pode ser público ou privado)
+2. Faça upload de todos os arquivos:
+   ```
+   ff-sorteio/
+   ├── index.html
+   ├── css/style.css
+   └── js/
+       ├── firebase-config.js  ← com suas credenciais
+       ├── db.js
+       ├── storage.js
+       ├── players.js
+       ├── sorteio.js
+       ├── tournament.js
+       └── app.js
+   ```
+3. Vá em **Settings → Pages → Source: "Deploy from branch" → main → / (root)**
+4. Aguarde 1-2 minutos → seu site estará em `https://seunome.github.io/ff-sorteio`
+
+---
+
+## 🔑 Senha de admin
+
+A senha fixa de admin é: **`ADMDAVARZEAKK2`**
+
+Clique em "🔒 Admin" no canto superior direito e digite a senha.
+O login dura enquanto a aba estiver aberta (fecha a aba → precisa logar de novo).
+
+---
 
 ## ✨ Funcionalidades
 
-### 🎲 Sorteio
-- Cole nomes do grupo ou adicione manualmente
-- Modos: Equilibrado, Snake Draft, Sequencial
-- Gera mensagem formatada para WhatsApp
-- **Registre o resultado** após a partida (time vencedor + MVP)
+| Feature | Descrição |
+|---|---|
+| 🎲 **Sorteio** | Cola nomes, configura times, gera mensagem pro WhatsApp |
+| 📅 **Salas (admin)** | Cria sala com formato 1v1/2v2/3v3/4v4, copia link e manda pro grupo |
+| ✅ **Confirmação** | Membro abre o link → digita o nick → aparece pra você em tempo real |
+| 🔒 **Anti-spam** | Cada dispositivo confirma uma única vez; pode corrigir o nick 1x |
+| 🎲 **Sorteio da sala** | Admin clica "Sortear times" com os confirmados e manda no WhatsApp |
+| 👤 **Perfis** | Stats de cada jogador: WR, MVPs, sequência, melhor dupla |
+| 🏅 **Conquistas** | Badges automáticos desbloqueados por desempenho |
+| 🏆 **Torneio** | Chaveamento automático tipo copa |
 
-### 📅 Partidas
-- Agende partidas com data/hora
-- Jogadores confirmam presença via link
-- Histórico completo de partidas registradas
+---
 
-### 👤 Jogadores
-- Cadastro com nick e rank
-- Perfil individual com stats: vitórias, derrotas, WR, MVPs
-- Gráfico de winrate por mês
-- Sequência atual de vitórias/derrotas
-- Melhor dupla (com quem vence mais)
-- **Conquistas automáticas**: 🥇 Primeira Vitória, 🔥 Em Chamas (3 seguidas), 💥 Dominante (5), ⚡ Imparável (10), ⭐ MVP, 👑 Rei do MVP, 🎮 Veterano, 🏆 Lenda...
+## 📁 Estrutura de arquivos
 
-### 🏆 Torneio
-- Chaveamento automático tipo copa
-- Suporte a 2–16 times (preenche byes automaticamente)
-- Avança rodadas ao definir vencedores
-- Revela o campeão com banner especial
-
-### 🔑 Modo Admin
-- Ative com uma senha (definida no primeiro acesso)
-- Admin pode: deletar jogadores, deletar partidas, definir vencedores no torneio, deletar sessões agendadas
-
-### 🔗 Links
-- **Convite**: gere um link para o jogador se auto-cadastrar (sem você precisar digitar)
-- **Sessão**: compartilhe o link da partida agendada para confirmação de presença
-
-## 🚀 Como usar
-
-Basta abrir `index.html` no navegador. Todos os dados são salvos localmente no `localStorage` do dispositivo.
-
-> **Nota:** Para usar online (GitHub Pages, por exemplo), suba a pasta inteira e acesse `index.html`.
-
-## 📱 Mobile friendly
-Layout responsivo para uso no celular durante as partidas.
+```
+ff-sorteio/
+├── index.html              ← página principal
+├── README.md
+├── css/
+│   └── style.css           ← todos os estilos
+└── js/
+    ├── firebase-config.js  ← VOCÊ EDITA ESSE ← credenciais Firebase
+    ├── db.js               ← integração Firebase (tempo real)
+    ├── storage.js          ← dados locais (jogadores, partidas, torneio)
+    ├── players.js          ← perfis, stats, conquistas
+    ├── sorteio.js          ← lógica de sorteio
+    ├── tournament.js       ← chaveamento tipo copa
+    └── app.js              ← controlador da UI
+```

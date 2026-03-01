@@ -45,21 +45,14 @@ const UI = (() => {
     } else {
       const pw = prompt('Senha de administrador:');
       if (pw === null) return;
-      const saved = Storage.getAdminKey();
-      if (!saved) {
-        // Primeira vez: define a senha
-        Storage.setAdminKey(pw);
-        Storage.setAdmin(true);
-        toast('🔑 Senha definida! Admin ativado.');
-      } else if (pw === saved) {
+      if (Storage.checkPassword(pw)) {
         Storage.setAdmin(true);
         toast('🔑 Modo admin ativado!');
+        renderAdminBtn();
+        showTab(activeTab);
       } else {
         toast('❌ Senha incorreta', 'err');
-        return;
       }
-      renderAdminBtn();
-      showTab(activeTab);
     }
   };
 
@@ -207,13 +200,28 @@ const UI = (() => {
   //  TAB: PARTIDAS
   // ══════════════════════════════════════════════════════════════════════════
   const renderPartidasTab = () => {
+    const createBlock = $('session-create-block');
+    if (createBlock) createBlock.classList.toggle('hidden', !Storage.isAdmin());
+
+    // Aviso se Firebase não estiver configurado
+    const fbWarn = $('firebase-warn');
+    if (fbWarn) fbWarn.classList.toggle('hidden', !DB.isUsingFallback());
+
     renderSessions();
     renderMatchHistory();
   };
 
+  // Formatos disponíveis
+  const FORMATS = {
+    '1v1': { label:'1v1', players:2,  teams:2, perTeam:1 },
+    '2v2': { label:'2v2', players:4,  teams:2, perTeam:2 },
+    '3v3': { label:'3v3', players:6,  teams:2, perTeam:3 },
+    '4v4': { label:'4v4', players:8,  teams:2, perTeam:4 },
+  };
+
   const renderSessions = () => {
-    const wrap    = $('sessions-list');
-    const sessions = Storage.getSessions();
+    const wrap     = $('sessions-list');
+    const sessions = DB.getSessions();
     if (!wrap) return;
 
     if (sessions.length === 0) {
@@ -222,25 +230,78 @@ const UI = (() => {
     }
 
     wrap.innerHTML = sessions.map(s => {
-      const dateStr = new Date(s.scheduledAt).toLocaleString('pt-BR', { dateStyle:'short', timeStyle:'short' });
+      const dateStr   = new Date(s.scheduledAt).toLocaleString('pt-BR', { dateStyle:'short', timeStyle:'short' });
       const confirmed = s.confirmed || [];
-      const canEdit = Storage.isAdmin();
+      const myConf    = Storage.getMyConfirmation(s.id);
+      const admin     = Storage.isAdmin();
+      const fmt       = FORMATS[s.format] || null;
+      const needed    = fmt ? fmt.players : null;
+      const hasEnough = fmt ? confirmed.length >= needed : confirmed.length >= 2;
+
+      // Badge de formato
+      const fmtBadge = fmt
+        ? `<span class="format-badge">${fmt.label}</span>`
+        : '';
+
+      // Vagas: ex "3/4 confirmados"
+      const vagasTxt = fmt
+        ? `<span class="${confirmed.length >= needed ? 'vagas-ok' : 'vagas-pending'}">${confirmed.length}/${needed} confirmado${needed !== 1 ? 's' : ''}</span>`
+        : `<b style="color:var(--accent)">${confirmed.length} confirmado${confirmed.length !== 1 ? 's' : ''}</b>`;
+
+      // Status do próprio membro
+      let myStatus = '';
+      if (!admin) {
+        if (myConf) {
+          myStatus = `<div class="conf-status conf-ok">
+            ✅ Você confirmou como <b>${myConf.nick}</b>
+            ${!myConf.edited
+              ? `<button class="btn btn-ghost btn-sm" style="margin-left:8px" onclick="UI.editMyPresence(${s.id})">✏️ Corrigir nick</button>`
+              : `<span style="color:var(--muted);font-size:11px;margin-left:8px">(edição usada)</span>`}
+          </div>`;
+        } else {
+          myStatus = `<div class="conf-status conf-pending">⚠️ Você ainda não confirmou presença.</div>`;
+        }
+      }
+
+      // Lista de confirmados
+      const listHTML = confirmed.length > 0
+        ? `<div class="session-confirmed-list">
+            ${confirmed.map(p => `
+              <div class="conf-row">
+                <span class="conf-nick">${p}</span>
+                ${admin ? `<button class="conf-kick" onclick="UI.kickFromSession(${s.id},${JSON.stringify(p)})">✕</button>` : ''}
+              </div>`).join('')}
+           </div>`
+        : `<p style="color:var(--muted);font-size:12px;margin-top:8px">Nenhuma confirmação ainda.</p>`;
+
+      // Botão de sorteio (admin, quando tem jogadores suficientes)
+      const drawBtn = admin && hasEnough
+        ? `<button class="btn btn-primary btn-sm" onclick="UI.drawFromSession(${s.id})">🎲 Sortear times</button>`
+        : (admin && !hasEnough && fmt)
+          ? `<button class="btn btn-ghost btn-sm" disabled title="Faltam ${needed - confirmed.length} jogadores">🎲 Sortear times</button>`
+          : '';
+
       return `<div class="session-card">
         <div class="session-head">
           <div>
-            <div class="session-name">${s.eventName || 'Partida'}</div>
-            <div class="session-date">📅 ${dateStr}</div>
+            <div class="session-name">${s.eventName || 'Partida'} ${fmtBadge}</div>
+            <div class="session-date">📅 ${dateStr} · ${vagasTxt}</div>
           </div>
-          ${canEdit ? `<button class="btn btn-ghost btn-sm" onclick="UI.deleteSession(${s.id})">🗑</button>` : ''}
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            ${admin ? `<button class="btn btn-ghost btn-sm" onclick="UI.adminAddToSession(${s.id})">+ Adicionar</button>` : ''}
+            ${admin ? `<button class="btn btn-ghost btn-sm" onclick="UI.deleteSession(${s.id})">🗑</button>` : ''}
+          </div>
         </div>
-        <div class="session-players">
-          ${confirmed.length > 0
-            ? confirmed.map(p => `<span class="ptag">${p}</span>`).join('')
-            : `<span style="color:var(--muted);font-size:12px">Nenhuma confirmação ainda</span>`}
-        </div>
-        <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
-          <button class="btn btn-ghost btn-sm" onclick="UI.confirmPresence(${s.id})">✅ Confirmar presença</button>
+
+        ${myStatus}
+        ${listHTML}
+
+        <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
+          ${(!myConf && !admin)
+            ? `<button class="btn btn-primary btn-sm" onclick="UI.confirmPresence(${s.id})">✅ Confirmar presença</button>`
+            : ''}
           <button class="btn btn-ghost btn-sm" onclick="UI.copySessionLink(${s.id})">🔗 Copiar link</button>
+          ${drawBtn}
         </div>
       </div>`;
     }).join('');
@@ -274,38 +335,243 @@ const UI = (() => {
     }).join('');
   };
 
-  const createSession = () => {
-    const name = $('session-name')?.value.trim() || '';
+  const createSession = async () => {
+    if (!Storage.isAdmin()) { toast('⚠️ Apenas admin pode criar sessões', 'warn'); return; }
+    const name    = $('session-name')?.value.trim() || '';
     const dateVal = $('session-date')?.value;
+    const format  = $('session-format')?.value || '';
     if (!dateVal) { toast('⚠️ Informe a data/hora', 'warn'); return; }
-    Storage.addSession({ eventName: name, scheduledAt: new Date(dateVal).getTime() });
-    $('session-name').value = '';
-    $('session-date').value = '';
-    toast('📅 Sessão agendada!');
-    renderSessions();
+    const btn = $('btn-create-session');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Criando...'; }
+    try {
+      await DB.addSession({
+        eventName: name,
+        scheduledAt: new Date(dateVal).getTime(),
+        format: format || null,
+      });
+      $('session-name').value = '';
+      $('session-date').value = '';
+      toast('📅 Sala criada!');
+      // Firebase listener atualiza automaticamente; fallback precisa renderizar
+      if (DB.isUsingFallback()) renderSessions();
+    } catch(e) {
+      toast('❌ Erro ao criar: ' + e.message, 'err');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '📅 Criar sala'; }
+    }
   };
 
+  // ── Sortear times a partir dos confirmados ────────────────────────────────
+  const drawFromSession = (sessionId) => {
+    if (!Storage.isAdmin()) return;
+    const session = DB.getSession(sessionId);
+    if (!session) return;
+
+    const confirmed = [...(session.confirmed || [])];
+    const fmt = FORMATS[session.format];
+
+    // Embaralhar
+    for (let i = confirmed.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [confirmed[i], confirmed[j]] = [confirmed[j], confirmed[i]];
+    }
+
+    let teams, extras = [];
+
+    if (fmt) {
+      // Pega exatamente os jogadores necessários, o resto vira reserva
+      const playing = confirmed.slice(0, fmt.players);
+      extras = confirmed.slice(fmt.players);
+      teams = [];
+      for (let i = 0; i < fmt.teams; i++) {
+        teams.push(playing.slice(i * fmt.perTeam, (i + 1) * fmt.perTeam));
+      }
+    } else {
+      // Sem formato definido: divide em 2 times iguais
+      const half = Math.floor(confirmed.length / 2);
+      teams = [confirmed.slice(0, half), confirmed.slice(half)];
+    }
+
+    // Mostrar resultado num modal
+    const modal = $('modal-draw-result');
+    const body  = $('draw-result-body');
+    if (!modal || !body) return;
+
+    const tcs = ['tc0','tc1','tc2','tc3','tc4','tc5'];
+    body.innerHTML = `
+      <div style="margin-bottom:16px">
+        <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:16px;color:var(--white);margin-bottom:4px">
+          ${session.eventName || 'Partida'} ${fmt ? `· <span class="format-badge">${fmt.label}</span>` : ''}
+        </div>
+        <div style="font-size:12px;color:var(--muted)">Sorteio realizado agora</div>
+      </div>
+      ${teams.map((team, i) => `
+        <div class="team-block ${tcs[i % 6]}" style="margin-bottom:10px">
+          <div class="team-block-label">
+            <div class="team-dot"></div>
+            Time ${i + 1}
+          </div>
+          <div class="team-members">
+            ${team.map(p => `<div class="team-member">${p}</div>`).join('')}
+          </div>
+        </div>`).join('')}
+      ${extras.length > 0 ? `
+        <div style="margin-top:12px;padding:12px;background:rgba(255,255,255,0.03);border:1px solid var(--border2);border-radius:12px">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px">⏳ Reservas</div>
+          <div class="team-members">${extras.map(p => `<div class="team-member">${p}</div>`).join('')}</div>
+        </div>` : ''}
+    `;
+
+    // Montar mensagem pra WA
+    const date = new Date().toLocaleDateString('pt-BR');
+    let msg = session.eventName ? `🏆 *${session.eventName}*
+` : '';
+    msg += `🔫 *SORTEIO — ${date}*
+${'━'.repeat(26)}
+
+`;
+    teams.forEach((team, i) => {
+      msg += `*Time ${i + 1}*
+`;
+      team.forEach(p => { msg += `  • ${p}
+`; });
+      msg += '
+';
+    });
+    if (extras.length > 0) {
+      msg += `*Reservas*
+`;
+      extras.forEach(p => { msg += `  • ${p}
+`; });
+    }
+
+    const previewEl = $('draw-result-preview');
+    if (previewEl) previewEl.textContent = msg;
+
+    modal.classList.remove('hidden');
+  };
+
+  // Membro confirma presença pela primeira vez
   const confirmPresence = (sessionId) => {
-    const nick = prompt('Seu nick no Free Fire:');
+    const myConf = Storage.getMyConfirmation(sessionId);
+    if (myConf) { toast('⚠️ Você já confirmou como ' + myConf.nick, 'warn'); return; }
+
+    const modal = $('modal-confirm');
+    if (!modal) return;
+    modal.dataset.sessionId = sessionId;
+    modal.dataset.mode = 'confirm';
+    $('confirm-modal-title').textContent = '✅ Confirmar presença';
+    $('confirm-nick-input').value = '';
+    $('confirm-nick-input').placeholder = 'Seu nick exato no Free Fire';
+    $('confirm-hint').textContent = 'Você poderá corrigir o nick uma única vez após confirmar.';
+    modal.classList.remove('hidden');
+    $('confirm-nick-input').focus();
+  };
+
+  // Membro edita o próprio nick (uma única vez)
+  const editMyPresence = (sessionId) => {
+    const myConf = Storage.getMyConfirmation(sessionId);
+    if (!myConf || myConf.edited) { toast('⚠️ Edição não disponível', 'warn'); return; }
+
+    const modal = $('modal-confirm');
+    if (!modal) return;
+    modal.dataset.sessionId = sessionId;
+    modal.dataset.mode = 'edit';
+    modal.dataset.oldNick = myConf.nick;
+    $('confirm-modal-title').textContent = '✏️ Corrigir nick';
+    $('confirm-nick-input').value = myConf.nick;
+    $('confirm-nick-input').placeholder = 'Novo nick correto';
+    $('confirm-hint').textContent = '⚠️ Após salvar, não será possível alterar novamente.';
+    modal.classList.remove('hidden');
+    $('confirm-nick-input').focus();
+  };
+
+  // Submete o modal de confirmação (serve pra confirm e edit)
+  const submitConfirmModal = () => {
+    const modal     = $('modal-confirm');
+    const sessionId = parseInt(modal.dataset.sessionId);
+    const mode      = modal.dataset.mode;
+    const nick      = $('confirm-nick-input').value.trim();
+
+    if (!nick) { toast('⚠️ Digite seu nick', 'warn'); return; }
+    if (nick.length < 2 || nick.length > 40) { toast('⚠️ Nick inválido', 'warn'); return; }
+
+    const session = DB.getSession(sessionId);
+    if (!session) { toast('Sessão não encontrada', 'err'); return; }
+
+    const btn2 = $('btn-submit-confirm');
+    if (btn2) { btn2.disabled = true; btn2.textContent = '⏳ Salvando...'; }
+    try {
+      if (mode === 'confirm') {
+        if ((session.confirmed || []).some(n => n.toLowerCase() === nick.toLowerCase())) {
+          toast('⚠️ Esse nick já está confirmado!', 'warn'); return;
+        }
+        await DB.addConfirmed(sessionId, nick);
+        Storage.setMyConfirmation(sessionId, { nick, edited: false });
+        toast(`✅ ${nick} confirmado!`);
+      } else {
+        const oldNick = modal.dataset.oldNick;
+        await DB.replaceConfirmed(sessionId, oldNick, nick);
+        Storage.setMyConfirmation(sessionId, { nick, edited: true });
+        toast(`✏️ Nick atualizado para ${nick}`);
+      }
+      modal.classList.add('hidden');
+      if (DB.isUsingFallback()) renderSessions();
+    } catch(e) {
+      toast('❌ Erro ao salvar: ' + e.message, 'err');
+    } finally {
+      if (btn2) { btn2.disabled = false; btn2.textContent = '✅ Confirmar'; }
+    }
+  };
+
+  const closeConfirmModal = () => $('modal-confirm')?.classList.add('hidden');
+
+  // Admin: remove jogador da lista
+  const kickFromSession = async (sessionId, nick) => {
+    if (!Storage.isAdmin()) return;
+    if (!window.confirm(`Remover "${nick}" da sessão?`)) return;
+    try {
+      await DB.removeConfirmed(sessionId, nick);
+      toast(`🚫 ${nick} removido`);
+      if (DB.isUsingFallback()) renderSessions();
+    } catch(e) {
+      toast('❌ Erro: ' + e.message, 'err');
+    }
+  };
+
+  // Admin: adiciona jogador manualmente
+  const adminAddToSession = async (sessionId) => {
+    if (!Storage.isAdmin()) return;
+    const nick = window.prompt('Nick do jogador a adicionar:');
     if (!nick?.trim()) return;
-    const s = Storage.getSessions().find(s => s.id === sessionId);
-    if (!s) return;
-    if ((s.confirmed || []).includes(nick.trim())) { toast('Você já está confirmado!', 'warn'); return; }
-    Storage.updateSession(sessionId, { confirmed: [...(s.confirmed || []), nick.trim()] });
-    toast(`✅ ${nick.trim()} confirmado!`);
-    renderSessions();
+    const session = DB.getSession(sessionId);
+    if (!session) return;
+    if ((session.confirmed || []).some(n => n.toLowerCase() === nick.trim().toLowerCase())) {
+      toast('⚠️ Nick já está na lista', 'warn'); return;
+    }
+    try {
+      await DB.addConfirmed(sessionId, nick.trim());
+      toast(`✅ ${nick.trim()} adicionado`);
+      if (DB.isUsingFallback()) renderSessions();
+    } catch(e) {
+      toast('❌ Erro: ' + e.message, 'err');
+    }
   };
 
   const copySessionLink = (sessionId) => {
     const url = `${location.href.split('#')[0]}#session=${sessionId}`;
-    navigator.clipboard.writeText(url).then(() => toast('🔗 Link copiado!')).catch(() => toast('Copie manualmente: ' + url));
+    navigator.clipboard.writeText(url).then(() => toast('🔗 Link copiado! Mande pro grupo.')).catch(() => toast('Copie: ' + url));
   };
 
-  const deleteSession = (id) => {
-    if (!confirm('Deletar sessão?')) return;
-    Storage.deleteSession(id);
-    renderSessions();
-    toast('🗑 Sessão removida');
+  const deleteSession = async (id) => {
+    if (!window.confirm('Deletar sessão?')) return;
+    try {
+      await DB.deleteSession(id);
+      toast('🗑 Sessão removida');
+      if (DB.isUsingFallback()) renderSessions();
+    } catch(e) {
+      toast('❌ Erro: ' + e.message, 'err');
+    }
   };
 
   const deleteMatch = (id) => {
@@ -510,44 +776,39 @@ const UI = (() => {
     const hash = location.hash.slice(1);
     if (!hash) return;
 
-    // Convite: #invite=Nick:Rank
+    // Link de sessão: #session=ID
+    if (hash.startsWith('session=')) {
+      const sessionId = parseInt(hash.slice(8));
+      history.replaceState(null, '', location.pathname);
+      if (isNaN(sessionId)) return;
+
+      // Muda pra aba de partidas e abre modal de confirmação
+      setTimeout(() => {
+        showTab('partidas');
+        // Admin não precisa confirmar — mas se quiser testar como membro, pode
+        // abrir em aba anônima. Aqui só abre o modal pra quem ainda não confirmou.
+        const myConf = Storage.getMyConfirmation(sessionId);
+        if (myConf) {
+          toast(`ℹ️ Você já está confirmado como ${myConf.nick}`);
+          return;
+        }
+        // Admin também pode confirmar presença (como jogador), então não bypassa
+        confirmPresence(sessionId);
+      }, 400);
+    }
+
+    // Convite de cadastro: #invite=Nick:Rank
     if (hash.startsWith('invite=')) {
       const parts = decodeURIComponent(hash.slice(7)).split(':');
       const nick  = parts[0];
       const rank  = parts[1] || 'Bronze';
+      history.replaceState(null, '', location.pathname);
       if (nick) {
         setTimeout(() => {
           if (confirm(`Confirmar cadastro?\n\nNick: ${nick}\nRank: ${rank}`)) {
-            if (Players.register(nick, rank)) {
-              toast(`✅ Bem-vindo, ${nick}!`);
-            } else {
-              toast(`ℹ️ ${nick} já está cadastrado`);
-            }
+            if (Players.register(nick, rank)) toast(`✅ Bem-vindo, ${nick}!`);
+            else toast(`ℹ️ ${nick} já está cadastrado`);
           }
-          history.replaceState(null, '', location.pathname);
-        }, 500);
-      }
-    }
-
-    // Link de sessão: #session=ID
-    if (hash.startsWith('session=')) {
-      const id = parseInt(hash.slice(8));
-      if (!isNaN(id)) {
-        setTimeout(() => {
-          const nick = prompt('Confirmar presença!\n\nSeu nick:');
-          if (nick?.trim()) {
-            const s = Storage.getSessions().find(s => s.id === id);
-            if (s) {
-              if (!(s.confirmed || []).includes(nick.trim())) {
-                Storage.updateSession(id, { confirmed: [...(s.confirmed || []), nick.trim()] });
-                toast(`✅ ${nick.trim()} confirmado!`);
-              } else {
-                toast(`ℹ️ Você já estava confirmado`);
-              }
-            }
-          }
-          history.replaceState(null, '', location.pathname);
-          showTab('partidas');
         }, 500);
       }
     }
@@ -557,6 +818,15 @@ const UI = (() => {
   //  Init & eventos
   // ══════════════════════════════════════════════════════════════════════════
   const init = () => {
+    // Inicializa Firebase e registra callback de tempo real
+    DB.setOnChange(() => {
+      if (activeTab === 'partidas') renderSessions();
+    });
+    DB.init();
+    DB.onReady(() => {
+      if (activeTab === 'partidas') renderSessions();
+    });
+
     renderAdminBtn();
     renderPool();
     handleHash();
@@ -641,6 +911,20 @@ const UI = (() => {
 
     // ── Partidas ───────────────────────────────────────────────────────────
     $('btn-create-session')?.addEventListener('click', createSession);
+    // ── Modal resultado do sorteio de sessão ──────────────────────────────
+    $('draw-result-close')?.addEventListener('click', () => $('modal-draw-result')?.classList.add('hidden'));
+    $('modal-draw-result')?.addEventListener('click', e => { if (e.target === $('modal-draw-result')) $('modal-draw-result').classList.add('hidden'); });
+    $('draw-result-copy')?.addEventListener('click', () => {
+      const text = $('draw-result-preview')?.textContent || '';
+      navigator.clipboard.writeText(text).then(() => toast('✅ Copiado!')).catch(() => {});
+    });
+    $('draw-result-wa')?.addEventListener('click', () => {
+      window.open('https://wa.me/?text=' + encodeURIComponent($('draw-result-preview')?.textContent || ''), '_blank');
+    });
+    $('modal-confirm-close')?.addEventListener('click', closeConfirmModal);
+    $('btn-submit-confirm')?.addEventListener('click', submitConfirmModal);
+    $('confirm-nick-input')?.addEventListener('keydown', e => { if (e.key === 'Enter') submitConfirmModal(); });
+    $('modal-confirm')?.addEventListener('click', e => { if (e.target === $('modal-confirm')) closeConfirmModal(); });
 
     // ── Jogadores: modais ──────────────────────────────────────────────────
     $('modal-register-close')?.addEventListener('click', closeRegisterModal);
@@ -664,7 +948,8 @@ const UI = (() => {
     openProfile, deletePlayer, openRegisterModal, openInviteModal,
     closeRegisterModal, closeInviteModal, doRegister, generateInviteLink,
     // partidas
-    confirmPresence, copySessionLink, deleteSession, deleteMatch,
+    confirmPresence, editMyPresence, submitConfirmModal, closeConfirmModal,
+    kickFromSession, adminAddToSession, copySessionLink, deleteSession, deleteMatch, drawFromSession,
     toast,
   };
 })();
