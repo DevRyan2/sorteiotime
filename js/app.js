@@ -453,24 +453,29 @@ const UI = (() => {
 
     // Montar mensagem pra WA
     const date = new Date().toLocaleDateString('pt-BR');
-    let msg = session.eventName ? `🏆 *${session.eventName}*
-` : '';
-    msg += `🔫 *SORTEIO — ${date}*
-${'━'.repeat(26)}
-
-`;
+    // prettier message using Sorteio rules text when available
+    const rules = (typeof Sorteio.getRulesText === 'function') ? Sorteio.getRulesText() : '';
+    const badges = ['🟢','🔵','🟣','🟡','🔴','🟤','⚪','🟠'];
+    let msg = '';
+    if (session.eventName) msg += `🏆 *${session.eventName}*\n`;
+    msg += `🔫 *SORTEIO — ${date}*\n${'━'.repeat(26)}\n\n`;
     teams.forEach((team, i) => {
-      msg += `*Time ${i + 1}*
-`;
-      team.forEach(p => { msg += `  • ${p}
-`; });
+      msg += `${badges[i % badges.length]} *Time ${i + 1}* · ${team.length} jogador(es)\n`;
+      team.forEach(p => { msg += `  • ${p}\n`; });
+      msg += '\n';
     });
     if (extras.length > 0) {
-      msg += `*Reservas*
-`;
-      extras.forEach(p => { msg += `  • ${p}
-`; });
+      msg += `⏳ *Reservas*\n`;
+      extras.forEach(p => { msg += `  • ${p}\n`; });
+      msg += '\n';
     }
+    if (rules) {
+      msg += `${'─'.repeat(26)}\n`;
+      msg += `*Regras da sala*\n`;
+      // rules likely contains multiple lines; append as-is
+      msg += rules + '\n';
+    }
+    msg += `\n✅ Sorteado automaticamente`;
 
     const previewEl = $('draw-result-preview');
     if (previewEl) previewEl.textContent = msg;

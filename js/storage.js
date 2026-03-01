@@ -156,6 +156,7 @@ const Storage = (() => {
     addConfirmed, replaceConfirmed, removeConfirmed,
     getMyConfirmation, setMyConfirmation,
     isAdmin, setAdmin, getAdminKey, setAdminKey,
+    checkPassword,
     getTournament, setTournament, clearTournament,
   };
 })();

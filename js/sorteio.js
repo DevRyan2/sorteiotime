@@ -71,17 +71,28 @@ const Sorteio = (() => {
     if (eventName) msg += `🏆 *${eventName}*\n`;
     msg += `🔫 *SORTEIO DE TIMES — ${date}*\n${'━'.repeat(26)}\n\n`;
     teams.forEach((team, i) => {
-      msg += `${badges[i % 8]} *SLOT ${i + 1}*\n`;
-      team.forEach(p => { msg += `  • ${p}\n`; });
+      const teamLabel = `Time ${i + 1}`;
+      msg += `${badges[i % badges.length]} *${teamLabel}* · ${team.length} jogador(es)\n`;
+      // listar por slots (Slot 1, Slot 2, ...)
+      team.forEach((p, idx) => {
+        msg += `  • Slot ${idx + 1}: ${p}\n`;
+      });
       msg += '\n';
     });
     msg += `${'─'.repeat(26)}\n`;
-    msg += ` → ᴘᴇʀsᴏɴᴀɢᴇɴs: ᴀʟᴏᴋ, ᴋᴇʟʟʏ, ᴍᴀxɪᴍ, ᴍᴏᴄᴏ, ʟᴇᴏɴ ᴇ ʟᴀᴜʀᴀ \n`;
-    msg += ` → sᴇᴍ ᴄᴀʀʀᴇɢᴀᴍᴇɴᴛᴏ \n`;
-    msg += ` → ᴘᴇᴛs ᴘʀᴏɪʙɪᴅᴏs: ᴅʀᴀᴋɪɴᴏ, ᴇᴛᴢɪɴ ᴇ ᴄᴀsᴄᴜᴅɪɴʜᴏ \n`;
-    msg += ` → 3 ᴍɪɴᴜᴛᴏs ᴘᴀʀᴀ ᴇɴᴛʀᴀʀ! ᴀᴘᴏ́s ɪssᴏ, ᴀʙʀᴇ ᴠᴀɢᴀ.\n`;
-    msg += `✅ Sorteado automaticamente`;
+    msg += `${getRulesText()}\n`;
     return msg;
+  };
+
+  const getRulesText = () => {
+    let r = '';
+    r += `— Regras da sala —\n`;
+    r += `• Personagens sugeridos: Alok, Kelly, Maxim, Moco, Leon e Laura\n`;
+    r += `• Sem carregamento / sem recursos extras\n`;
+    r += `• Pets proibidos: Drakino, Etzin e Cascudinho\n`;
+    r += `• 3 minutos para entrar — após isso a vaga será liberada\n`;
+    r += `✅ Sorteado automaticamente`;
+    return r;
   };
 
   // ── Salvar resultado (para histórico + perfis) ───────────────────────────
@@ -110,5 +121,5 @@ const Sorteio = (() => {
     return { match, newAchievements };
   };
 
-  return { getPlayers, getTeams, addPlayer, removePlayer, setPlayers, parseText, clearPlayers, draw, buildMessage, saveResult };
+  return { getPlayers, getTeams, addPlayer, removePlayer, setPlayers, parseText, clearPlayers, draw, buildMessage, getRulesText, saveResult };
 })();
