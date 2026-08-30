@@ -32,6 +32,22 @@ Gerenciador completo de partidas de Free Fire com **confirmações em tempo real
     "sessions": {
       ".read": true,
       ".write": true
+    },
+    "players": {
+      ".read": true,
+      ".write": true
+    },
+    "matches": {
+      ".read": true,
+      ".write": true
+    },
+    "tournament": {
+      ".read": true,
+      ".write": true
+    },
+    "tournaments": {
+      ".read": true,
+      ".write": true
     }
   }
 }
@@ -109,6 +125,29 @@ A senha fixa de admin é: **`ADMDAVARZEAKK2`**
 
 Clique em "🔒 Admin" no canto superior direito e digite a senha.
 O login dura enquanto a aba estiver aberta (fecha a aba → precisa logar de novo).
+
+### Backend de verificação
+
+Para que operações sensíveis (remoção de rank, punições, etc.) exijam
+uma senha que **não apareça no front-end**, é preciso executar um pequeno
+servidor Node.js local. Ele apenas valida a senha e **não expõe** o valor
+em nenhum lugar acessível aos navegadores.
+
+1. instale dependências:
+  ```powershell
+  cd server
+  npm install
+  ```
+2. defina a variável de ambiente `ADMIN_PASSWORD` com a senha desejada
+  e rode:
+  ```powershell
+  $env:ADMIN_PASSWORD='MinhaSenhaSegura'; node server/server.js
+  ```
+3. o front-end chamará `POST /admin/verify` antes de executar ações de
+  administrador. a senha **nunca** é embutida no código cliente.
+
+O botão de entrar em modo admin foi removido da interface — sempre que
+uma operação exigir privilégio, você será solicitado pela senha.
 
 ---
 

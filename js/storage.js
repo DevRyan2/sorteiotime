@@ -44,6 +44,10 @@ const Storage = (() => {
       matches: [],
       achievements: [],
       joinedAt: Date.now(),
+      whatsapp: '',           // phone number for contact
+      photoBase64: null,      // profile photo as base64 data URI
+      punishmentUntil: null,  // timestamp when punishment expires (null=no punishment)
+      punishmentReason: '',   // reason for punishment
       ...(all[nick] || {}),
       ...data,
     };

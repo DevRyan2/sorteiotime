@@ -29,6 +29,8 @@ const DB = (() => {
         Object.values(raw).forEach(p => { if (p && p.nick) all[p.nick] = p; });
         localStorage.setItem('ff_players', JSON.stringify(all));
         if (_onChange) _onChange();
+      }, err => {
+        console.warn('[DB] players sync:', err.message);
       });
 
       // Sync partidas em tempo real
@@ -36,6 +38,8 @@ const DB = (() => {
         const raw = snap.val() || {};
         const arr = Object.values(raw).sort((a,b) => b.createdAt - a.createdAt);
         localStorage.setItem('ff_matches', JSON.stringify(arr));
+      }, err => {
+        console.warn('[DB] matches sync:', err.message);
       });
 
     } catch(e) {
@@ -59,6 +63,12 @@ const DB = (() => {
   };
   const _saveFallback = () => localStorage.setItem('ff_sessions', JSON.stringify(Object.values(_cache)));
   const _safeKey = str => str.toLowerCase().replace(/[^a-z0-9]/g,'_').slice(0,40);
+  const _enableFallback = (context, err) => {
+    console.warn(`[DB] ${context}; usando dados locais:`, err?.message || err);
+    _usingFallback = true;
+    _saveFallback();
+    if (_onChange) _onChange();
+  };
 
   const isReady         = () => _ready;
   const isUsingFallback = () => _usingFallback;
@@ -72,14 +82,23 @@ const DB = (() => {
   const addSession = async session => {
     const id = Date.now(), s = { id, confirmed:[], createdAt:id, ...session };
     if (_usingFallback) { _cache[id]=s; _saveFallback(); if(_onChange)_onChange(); return s; }
-    await _db.ref(`sessions/${id}`).set({ ...s, confirmed:{} });
+    _cache[id]=s;
+    try {
+      await _db.ref(`sessions/${id}`).set({ ...s, confirmed:{} });
+    } catch(e) {
+      _enableFallback('addSession falhou no Firebase', e);
+    }
     return s;
   };
 
   const deleteSession = async id => {
     delete _cache[id];
     if (_usingFallback) { _saveFallback(); if(_onChange)_onChange(); return; }
-    await _db.ref(`sessions/${id}`).remove();
+    try {
+      await _db.ref(`sessions/${id}`).remove();
+    } catch(e) {
+      _enableFallback('deleteSession falhou no Firebase', e);
+    }
   };
 
   const updateSession = async (id, updates) => {
@@ -87,7 +106,13 @@ const DB = (() => {
     _cache[id] = {...s, ...updates};
     if (_usingFallback) { _saveFallback(); if(_onChange)_onChange(); return _cache[id]; }
     const { confirmed, ...rest } = updates;
-    if (Object.keys(rest).length > 0) await _db.ref(`sessions/${id}`).update(rest);
+    if (Object.keys(rest).length > 0) {
+      try {
+        await _db.ref(`sessions/${id}`).update(rest);
+      } catch(e) {
+        _enableFallback('updateSession falhou no Firebase', e);
+      }
+    }
     return _cache[id];
   };
 
@@ -101,26 +126,41 @@ const DB = (() => {
     }
     if (_usingFallback) { s.confirmed=[...s.confirmed,nick]; _saveFallback(); if(_onChange)_onChange(); return true; }
     const key = nick.toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,30)||'p'+Date.now();
-    await _db.ref(`sessions/${sessionId}/confirmed/${key}`).set({ nick, addedAt:Date.now() });
+    s.confirmed=[...s.confirmed,nick];
+    try {
+      await _db.ref(`sessions/${sessionId}/confirmed/${key}`).set({ nick, addedAt:Date.now() });
+    } catch(e) {
+      _enableFallback('addConfirmed falhou no Firebase', e);
+    }
     return true;
   };
 
   const replaceConfirmed = async (sessionId, oldNick, newNick) => {
     const s = _cache[sessionId]; if(!s) return;
     if (_usingFallback) { s.confirmed=s.confirmed.map(n=>n===oldNick?newNick:n); _saveFallback(); if(_onChange)_onChange(); return; }
-    const snap = await _db.ref(`sessions/${sessionId}/confirmed`).once('value');
-    const data = snap.val()||{};
-    const entry = Object.entries(data).find(([,v])=>v.nick===oldNick);
-    if (entry) await _db.ref(`sessions/${sessionId}/confirmed/${entry[0]}`).update({ nick:newNick, editedAt:Date.now() });
+    s.confirmed=s.confirmed.map(n=>n===oldNick?newNick:n);
+    try {
+      const snap = await _db.ref(`sessions/${sessionId}/confirmed`).once('value');
+      const data = snap.val()||{};
+      const entry = Object.entries(data).find(([,v])=>v.nick===oldNick);
+      if (entry) await _db.ref(`sessions/${sessionId}/confirmed/${entry[0]}`).update({ nick:newNick, editedAt:Date.now() });
+    } catch(e) {
+      _enableFallback('replaceConfirmed falhou no Firebase', e);
+    }
   };
 
   const removeConfirmed = async (sessionId, nick) => {
     const s = _cache[sessionId]; if(!s) return;
     if (_usingFallback) { s.confirmed=s.confirmed.filter(n=>n!==nick); _saveFallback(); if(_onChange)_onChange(); return; }
-    const snap = await _db.ref(`sessions/${sessionId}/confirmed`).once('value');
-    const data = snap.val()||{};
-    const entry = Object.entries(data).find(([,v])=>v.nick===nick);
-    if (entry) await _db.ref(`sessions/${sessionId}/confirmed/${entry[0]}`).remove();
+    s.confirmed=s.confirmed.filter(n=>n!==nick);
+    try {
+      const snap = await _db.ref(`sessions/${sessionId}/confirmed`).once('value');
+      const data = snap.val()||{};
+      const entry = Object.entries(data).find(([,v])=>v.nick===nick);
+      if (entry) await _db.ref(`sessions/${sessionId}/confirmed/${entry[0]}`).remove();
+    } catch(e) {
+      _enableFallback('removeConfirmed falhou no Firebase', e);
+    }
   };
 
   // ── Jogadores ──────────────────────────────────────────────────────────────

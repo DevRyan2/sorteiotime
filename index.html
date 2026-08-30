@@ -73,6 +73,14 @@
       <label class="field-label">Nick no Free Fire</label>
       <input type="text" class="field-full" id="reg-nick" placeholder="Seu nick exato">
     </div>
+    <div class="modal-field-group">
+      <label class="field-label">WhatsApp (somente dígitos)</label>
+      <input type="text" class="field-full" id="reg-whatsapp" placeholder="Ex: 5511999999999">
+    </div>
+    <div class="modal-field-group">
+      <label class="field-label">Foto de perfil (opcional)</label>
+      <input type="file" class="field-full" id="reg-photo" accept="image/*" style="padding:4px">
+    </div>
     <div class="btn-bar" style="margin-top:4px">
       <button class="btn btn-primary btn-full" id="btn-do-register">✅ Cadastrar</button>
     </div>
@@ -121,7 +129,7 @@
   <!-- Top bar (admin) -->
   <div class="top-bar">
     <button class="btn btn-ghost btn-sm" id="btn-scoring-config" onclick="UI.openScoringConfigModal()" style="display:none">⚙️ Pontos</button>
-    <button class="btn btn-ghost btn-sm" id="admin-btn">🔒 Admin</button>
+    <!-- admin button removed, backend verification used instead -->
   </div>
 
   <!-- Tab nav -->
@@ -444,6 +452,41 @@
     <div class="btn-bar">
       <button class="btn btn-secondary" id="btn-cancel-scoring">Cancelar</button>
       <button class="btn btn-primary"   id="btn-save-scoring">💾 Salvar configuração</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Aplicar punição -->
+<div class="modal-backdrop hidden" id="modal-punishment">
+  <div class="modal-box" style="max-width:520px">
+    <div class="modal-head">
+      <div class="modal-title">⚠️ Aplicar Punição</div>
+      <button class="modal-close" id="modal-punishment-close">✕</button>
+    </div>
+    <div style="color:var(--muted);font-size:13px;margin-bottom:16px;line-height:1.6">
+      O jogador não poderá participar de partidas durante o período de punição.
+    </div>
+    <div class="modal-field-group">
+      <label class="field-label">Jogador</label>
+      <input type="text" class="field-full" id="punishment-nick" placeholder="Nick" readonly style="background:rgba(255,255,255,0.03)">
+    </div>
+    <div class="modal-field-group">
+      <label class="field-label">Duração</label>
+      <div style="display:flex;gap:8px">
+        <input type="number" class="field-sm" id="punishment-duration" placeholder="Ex: 24" min="1" style="flex:1">
+        <select class="field-sm" id="punishment-unit" style="flex:1">
+          <option value="hours">Horas</option>
+          <option value="days">Dias</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-field-group">
+      <label class="field-label">Motivo (obrigatório)</label>
+      <textarea class="field-full" id="punishment-reason" placeholder="Ex: Comportamento inadequado na sala" style="height:60px;resize:vertical"></textarea>
+    </div>
+    <div class="btn-bar">
+      <button class="btn btn-secondary" id="btn-cancel-punishment">Cancelar</button>
+      <button class="btn btn-primary"   id="btn-apply-punishment">⚠️ Aplicar punição</button>
     </div>
   </div>
 </div>

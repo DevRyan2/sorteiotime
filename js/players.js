@@ -21,10 +21,17 @@ const Players = (() => {
   const getAll  = () => Storage.getPlayers();
   const getList = () => Object.values(getAll()).sort((a,b) => (b.points||0) - (a.points||0));
 
+  const getPlayer = (nick) => Storage.getPlayer(nick);
+
+  const update = (nick, data) => {
+    Storage.upsertPlayer(nick, data);
+    DB.upsertPlayer(nick, data).catch(()=>{});
+  };
+
   // Cria perfil sem rank manual — rank é calculado pelo sistema
-  const register = (nick) => {
+  const register = (nick, extraData = {}) => {
     if (Storage.getPlayer(nick)) return false;
-    Storage.upsertPlayer(nick, { nick });
+    Storage.upsertPlayer(nick, { nick, ...extraData });
     DB.upsertPlayer(nick, Storage.getPlayer(nick)).catch(()=>{});
     return true;
   };
@@ -224,5 +231,5 @@ const Players = (() => {
     `;
   };
 
-  return { getAll, getList, register, autoRegister, getStats, getStatsInPeriod, recordMatch, checkAchievements, renderProfile, renderWinrateChart };
+  return { getAll, getList, getPlayer, update, register, autoRegister, getStats, getStatsInPeriod, recordMatch, checkAchievements, renderProfile, renderWinrateChart };
 })();

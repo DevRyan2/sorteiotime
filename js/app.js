@@ -37,34 +37,32 @@ const UI = (() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // ── Admin ──────────────────────────────────────────────────────────────────
-  const toggleAdmin = () => {
-    if (Storage.isAdmin()) {
-      Storage.setAdmin(false);
-      renderAdminBtn();
-      toast('🔓 Modo admin desativado');
-      showTab(activeTab);
-    } else {
-      const pw = prompt('Senha de administrador:');
-      if (pw === null) return;
-      if (Storage.checkPassword(pw)) {
+  // ── Admin helpers ─────────────────────────────────────────────────────────
+  // we keep a simple flag in storage to remember that the user has been
+  // successfully verified recently; the actual credential is checked on the
+  // backend via requireAdmin().
+  const requireAdmin = async () => {
+    if (Storage.isAdmin()) return true;
+    const pw = prompt('Senha de administrador:');
+    if (!pw) return false;
+    try {
+      const resp = await fetch((window.ADMIN_API_BASE||'') + '/admin/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: pw }),
+      });
+      const data = await resp.json();
+      if (data.ok) {
         Storage.setAdmin(true);
-        toast('🔑 Modo admin ativado!');
-        renderAdminBtn();
-        showTab(activeTab);
-      } else {
-        toast('❌ Senha incorreta', 'err');
+        toast('🔑 Acesso de administrador concedido');
+        return true;
       }
+      toast('❌ Senha incorreta', 'err');
+    } catch(e) {
+      console.error('admin verify failed', e);
+      toast('❌ Erro verificando senha', 'err');
     }
-  };
-
-  const renderAdminBtn = () => {
-    const btn       = $('admin-btn');
-    const scoringBtn= $('btn-scoring-config');
-    if (!btn) return;
-    btn.textContent = Storage.isAdmin() ? '🔑 Admin ON' : '🔒 Admin';
-    btn.classList.toggle('admin-active', Storage.isAdmin());
-    if (scoringBtn) scoringBtn.style.display = Storage.isAdmin() ? 'inline-block' : 'none';
+    return false;
   };
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -341,6 +339,11 @@ const UI = (() => {
 
   const renderMatchHistory = () => {
     const wrap    = $('match-history');
+    if (!wrap) return;
+    if (!Storage.isAdmin()) {
+      wrap.innerHTML = `<p style="color:var(--muted);font-size:13px;padding:20px 0">Histórico disponível apenas para administradores.</p>`;
+      return;
+    }
     const matches = Storage.getMatches();
     if (!wrap) return;
     if (matches.length === 0) {
@@ -509,6 +512,14 @@ const UI = (() => {
     }
 
     if (stored) {
+      // Check if player is punished
+      const punishment = checkPunishment(stored);
+      if (punishment > 0) {
+        const hours = Math.ceil(punishment / (60 * 60 * 1000));
+        toast(`🚫 Você está punido por ${hours}h`, 'err');
+        return;
+      }
+      
       // quick confirm dialog
       if (!confirm(`Confirmar presença como ${stored}?`)) return;
       // go ahead and addConfirmed
@@ -674,7 +685,13 @@ const UI = (() => {
       urlBase = `${window.location.origin}${window.location.pathname}`;
     }
     const url = `${urlBase}?session=${sessionId}#session=${sessionId}`;
-    const text = `Participe da sala: ${url}`;
+    
+    // If admin is sharing, try to include their whatsapp number
+    const myNick = Storage.getMyNick();
+    const myPlayer = myNick ? Storage.getPlayer(myNick) : null;
+    const mention = myPlayer?.whatsapp ? `@${myPlayer.whatsapp}\n` : '';
+    
+    const text = `${mention}Participe da sala: ${url}`;
     window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
   };
 
@@ -738,6 +755,10 @@ const UI = (() => {
           <div class="rank-nums">
             <span class="rank-pts-big">${p.pts}pts</span>
             <span class="rank-sub">${p.wins}V · ${p.mvps}MVP · ${p.winrate}%WR</span>
+          </div>
+          <div style="display:flex;gap:4px">
+            ${Storage.isAdmin() ? `<button class="btn btn-ghost btn-sm" onclick="UI.openPunishmentModal('${p.nick}'); return false;" title="Puni\u00e7\u00e3o">⚠️</button>` : ''}
+            ${Storage.isAdmin() ? `<button class="btn btn-ghost btn-sm" onclick="UI.deletePlayer('${p.nick}'); return false;">🗑</button>` : ''}
           </div>
         </div>`).join('');
     };
@@ -823,6 +844,10 @@ const UI = (() => {
       teams:     session.teams.map(t => [...t]),
       winner:    winnerIdx, mvp: mvpNick || null, date: now, sessionId,
     });
+
+    // Remove session from active list so it doesn't appear as an open room
+    await DB.deleteSession(sessionId).catch(()=>{});
+    renderSessions();
 
     session.teams.forEach((team, ti) => {
       const won = ti === winnerIdx;
@@ -931,6 +956,9 @@ const UI = (() => {
               ${list.map(p => {
                 const stats = Players.getStats(p.nick);
                 const wrColor = stats.winrate >= 60 ? 'var(--green)' : stats.winrate >= 40 ? 'var(--accent)' : 'var(--red)';
+                const punishment = checkPunishment(p.nick);
+                const punishmentHtml = punishment > 0 ? `<span style="color:var(--red);font-size:11px">🚫 Punido</span>` : '';
+                const adminBtns = Storage.isAdmin() ? `<button class="btn btn-ghost btn-xs" onclick="UI.openPunishmentModal('${p.nick}'); return false;" title="Aplicar puni\u00e7\u00e3o">⚠️</button>` : '';
                 return `<div class="player-row" onclick="UI.openProfile('${p.nick}')">
                   <div class="player-avatar">${p.nick.charAt(0).toUpperCase()}</div>
                   <div class="player-row-info">
@@ -941,7 +969,9 @@ const UI = (() => {
                     <span style="color:${wrColor}">${stats.winrate}% WR</span>
                     <span style="color:var(--muted);font-size:11px">${stats.total}j</span>
                     ${(p.achievements||[]).length > 0 ? `<span title="${(p.achievements||[]).length} conquistas">🏅×${(p.achievements||[]).length}</span>` : ''}
+                    ${punishmentHtml}
                   </div>
+                  <div style="display:flex;gap:4px;opacity:0;transition:opacity 0.2s" class="player-actions">${adminBtns}</div>
                 </div>`;
               }).join('')}
             </div>`
@@ -955,12 +985,15 @@ const UI = (() => {
   };
 
   const deletePlayer = (nick) => {
-    if (!Storage.isAdmin()) return;
-    if (!confirm(`Deletar ${nick}? Isso não remove o histórico de partidas.`)) return;
-    DB.deletePlayer(nick).catch(()=>{});
-    profileNick = null;
-    renderJogadoresTab();
-    toast('🗑 Jogador removido');
+    // require admin rights for deletion
+    requireAdmin().then(ok => {
+      if (!ok) return;
+      if (!confirm(`Deletar ${nick}? Isso não remove o histórico de partidas.`)) return;
+      DB.deletePlayer(nick).catch(()=>{});
+      profileNick = null;
+      renderJogadoresTab();
+      toast('🗑 Jogador removido');
+    });
   };
 
   const openRegisterModal = () => {
@@ -978,11 +1011,82 @@ const UI = (() => {
     $('modal-register')?.classList.add('hidden');
   };
 
-  const doRegister = () => {
+  const openPunishmentModal = async (nick) => {
+    if (!(await requireAdmin())) return;
+    const modal = $('modal-punishment');
+    if (!modal) return;
+    $('punishment-nick').value = nick;
+    $('punishment-duration').value = '24';
+    $('punishment-unit').value = 'hours';
+    $('punishment-reason').value = '';
+    modal.classList.remove('hidden');
+    $('punishment-reason')?.focus();
+  };
+
+  const closePunishmentModal = () => {
+    $('modal-punishment')?.classList.add('hidden');
+  };
+
+  const applyPunishment = async () => {
+    const nick = $('punishment-nick')?.value.trim();
+    const duration = parseInt($('punishment-duration')?.value || 0, 10);
+    const unit = $('punishment-unit')?.value || 'hours';
+    const reason = $('punishment-reason')?.value.trim();
+    
+    if (!nick || duration <= 0 || !reason) {
+      toast('⚠️ Preencha todos os campos', 'warn');
+      return;
+    }
+    
+    // Calculate punishment end time
+    const now = Date.now();
+    const multiplier = unit === 'days' ? 24 * 60 * 60 * 1000 : 60 * 60 * 1000;
+    const punishmentUntil = now + (duration * multiplier);
+    
+    // Update player with punishment
+    const player = Players.getPlayer(nick);
+    if (player) {
+      player.punishmentUntil = punishmentUntil;
+      player.punishmentReason = reason;
+      Players.update(nick, player);
+      toast(`🚫 ${nick} recebeu puni\u00e7\u00e3o por ${duration} ${unit === 'days' ? 'dia(s)' : 'hora(s)'}`);
+      closePunishmentModal();
+      renderJogadoresTab();
+      renderRankTab();
+    }
+  };
+
+  const checkPunishment = (nick) => {
+    const player = Players.getPlayer(nick);
+    if (!player || !player.punishmentUntil) return 0;
+    const remaining = player.punishmentUntil - Date.now();
+    return remaining > 0 ? remaining : 0;
+  };
+
+  const doRegister = async () => {
     const nick = $('reg-nick')?.value.trim();
+    const whatsapp = $('reg-whatsapp')?.value.trim();
+    const photoFile = $('reg-photo')?.files?.[0];
+    
     if (!nick) { toast('⚠️ Informe o nick', 'warn'); return; }
-    if (Players.register(nick)) {
-      // Salvar nick do dispositivo se ainda não tem
+    if (!whatsapp) { toast('⚠️ Informe seu WhatsApp', 'warn'); return; }
+    
+    let photoBase64 = null;
+    if (photoFile) {
+      try {
+        photoBase64 = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(photoFile);
+        });
+      } catch(e) {
+        toast('❌ Erro ao processar foto', 'err');
+        return;
+      }
+    }
+    
+    if (Players.register(nick, { whatsapp, photoBase64 })) {
       if (!Storage.getMyNick()) Storage.setMyNick(nick);
       toast(`✅ ${nick} cadastrado!`);
       closeRegisterModal();
@@ -1181,7 +1285,7 @@ const UI = (() => {
     });
 
     // Botão admin
-    $('admin-btn')?.addEventListener('click', toggleAdmin);
+    // admin button removed from UI; actions now call requireAdmin() directly
 
     // ── Sorteio: step 1 ────────────────────────────────────────────────────
     $('btnParse')?.addEventListener('click', () => {
@@ -1275,6 +1379,12 @@ const UI = (() => {
     $('btn-do-register')?.addEventListener('click', doRegister);
     $('modal-invite-close')?.addEventListener('click', closeInviteModal);
     $('btn-gen-invite')?.addEventListener('click', generateInviteLink);
+
+    // ── Modal: Puni\u00e7\u00e3o ────────────────────────────────────────────
+    $('modal-punishment-close')?.addEventListener('click', closePunishmentModal);
+    $('btn-cancel-punishment')?.addEventListener('click', closePunishmentModal);
+    $('btn-apply-punishment')?.addEventListener('click', applyPunishment);
+    $('modal-punishment')?.addEventListener('click', e => { if (e.target === $('modal-punishment')) closePunishmentModal(); });
 
     // ── Modal: Finalizar partida ───────────────────────────────────────────
     $('modal-finish-close')?.addEventListener('click',  () => $('modal-finish-match')?.classList.add('hidden'));
